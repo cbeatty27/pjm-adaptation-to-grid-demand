@@ -36,6 +36,7 @@ export async function mount(root, data) {
   const scopes = [['us', 'U.S. Lower 48']].filter(() => meta.has_us).concat([['pjm', 'PJM']]);
   const state = { scope: scopes[0][0], interval: 'day', span: 'all', start: null, overlay: false };
   const charts = [];
+  let genTrimmed = null;
   let token = 0;
 
   root.innerHTML = `<div class="doc">
@@ -181,22 +182,29 @@ export async function mount(root, data) {
     const keys = ex.groups.filter((k) => view.gen[k] && view.gen[k].some((v) => v != null));
     const stack = keys.filter((k) => k !== 'storage');
     if (!keys.length) {
-      fGen.box.hidden = true; fGen.legend.innerHTML = '';
+      fGen.box.hidden = true; fGen.legend.innerHTML = ''; genTrimmed = null;
       fGen.note.textContent = 'EIA-930 has no net generation by fuel for this period. It starts in July 2018. The EIA-923 monthly chart below goes further back for the U.S.';
       return;
     }
     fGen.box.hidden = false;
-    const ds = stack.map((k) => ({ label: gl[k], data: view.gen[k], backgroundColor: FUEL_COLOR[k], borderColor: FUEL_COLOR[k], borderWidth: 0.6, fill: true, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'mix' }));
-    if (keys.includes('storage')) ds.push({ label: `${gl.storage} (net, can be negative)`, data: view.gen.storage, borderColor: FUEL_COLOR.storage, backgroundColor: FUEL_COLOR.storage, borderWidth: 1.5, fill: false, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'storage' });
-    if (state.overlay) ds.push({ label: 'Demand', data: view.demand.avg, borderColor: DEMAND_COLOR, borderWidth: 1.6, borderDash: [5, 3], fill: false, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'demand' });
-    const o = baseOpts(view, 'Net generation (MW)');
+    // start the chart at the first interval that has generation data, not where demand starts
+    let i0 = 0;
+    while (i0 < view.labels.length && !keys.some((k) => view.gen[k][i0] != null)) i0++;
+    const cut = (arr) => (arr ? arr.slice(i0) : arr);
+    const gv = i0 === 0 ? view : { ...view, labels: cut(view.labels), demand: { avg: cut(view.demand.avg) }, gHours: cut(view.gHours), gCov: cut(view.gCov),
+      gen: Object.fromEntries(Object.entries(view.gen).map(([k, v]) => [k, cut(v)])) };
+    genTrimmed = i0 > 0 ? gv.labels[0] : null;
+    const ds = stack.map((k) => ({ label: gl[k], data: gv.gen[k], backgroundColor: FUEL_COLOR[k], borderColor: FUEL_COLOR[k], borderWidth: 0.6, fill: true, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'mix' }));
+    if (keys.includes('storage')) ds.push({ label: `${gl.storage} (net, can be negative)`, data: gv.gen.storage, borderColor: FUEL_COLOR.storage, backgroundColor: FUEL_COLOR.storage, borderWidth: 1.5, fill: false, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'storage' });
+    if (state.overlay) ds.push({ label: 'Demand', data: gv.demand.avg, borderColor: DEMAND_COLOR, borderWidth: 1.6, borderDash: [5, 3], fill: false, pointRadius: 0, pointHoverRadius: 3, tension: 0, stack: 'demand' });
+    const o = baseOpts(gv, 'Net generation (MW)');
     o.scales.y.stacked = true;
-    o.plugins = { legend: { display: false }, tooltip: { itemSort: (a, b) => b.datasetIndex - a.datasetIndex, callbacks: { title: (it) => fmtTitle(view, it[0].label), label: (c) => `${c.dataset.label}: ${nf0.format(c.parsed.y)} MW`, afterBody: (it) => (view.gHours && view.gHours[it[0].dataIndex] != null && view.interval !== 'hour' && view.gCov && view.gCov[it[0].dataIndex] != null && view.gCov[it[0].dataIndex] < 0.95 ? `Partial: ${Math.round(100 * view.gCov[it[0].dataIndex])}% of the hours present` : '') } } };
-    charts.push(new Chart(fGen.cv, { type: 'line', data: { labels: view.labels, datasets: ds }, options: o, plugins: [releaseMarker(view.labels, relKey(view), 'bottom')] }));
+    o.plugins = { legend: { display: false }, tooltip: { itemSort: (a, b) => b.datasetIndex - a.datasetIndex, callbacks: { title: (it) => fmtTitle(gv, it[0].label), label: (c) => `${c.dataset.label}: ${nf0.format(c.parsed.y)} MW`, afterBody: (it) => (gv.gHours && gv.gHours[it[0].dataIndex] != null && gv.interval !== 'hour' && gv.gCov && gv.gCov[it[0].dataIndex] != null && gv.gCov[it[0].dataIndex] < 0.95 ? `Partial: ${Math.round(100 * gv.gCov[it[0].dataIndex])}% of the hours present` : '') } } };
+    charts.push(new Chart(fGen.cv, { type: 'line', data: { labels: gv.labels, datasets: ds }, options: o, plugins: [releaseMarker(gv.labels, relKey(gv), 'bottom')] }));
     fGen.legend.innerHTML = keys.map((k) => `<span><i style="background:${FUEL_COLOR[k]}"></i>${esc(gl[k])}</span>`).join('') + (state.overlay ? `<span><i class="line" style="background:${DEMAND_COLOR}"></i>Demand</span>` : '')
       + `<label class="xctl__check"><input type="checkbox" id="xOverlay" ${state.overlay ? 'checked' : ''}> Show demand on this chart</label>`;
     fGen.legend.querySelector('#xOverlay').addEventListener('change', (e) => { state.overlay = e.target.checked; refresh(); });
-    fGen.note.textContent = `Net generation by fuel, ${({ hour: 'each hour', day: 'average of each day', month: 'average of each month', year: 'average of each calendar year' })[view.interval]}, in MW, stacked${keys.includes('storage') ? '; storage is a separate line because it is negative while charging' : ''}. Generation is not the same as demand: power also moves in and out of the area, and the two series are reported separately.`;
+    fGen.note.textContent = `Net generation by fuel, ${({ hour: 'each hour', day: 'average of each day', month: 'average of each month', year: 'average of each calendar year' })[gv.interval]}, in MW, stacked${keys.includes('storage') ? '; storage is a separate line because it is negative while charging' : ''}. Generation is not the same as demand: power also moves in and out of the area, and the two series are reported separately.`;
   }
 
   function draw923(view, ex) {
@@ -281,7 +289,7 @@ export async function mount(root, data) {
     drawDemand(view); drawGen(view, ex); draw923(view, ex);
     const label = Object.fromEntries(scopes)[state.scope];
     fDem.foot.innerHTML = `Source: EIA Open Data API, <code>electricity/rto/region-data</code> (EIA-930, type D, respondent ${esc(ex.series)}). Outliers screened as described on Sources and method. Nothing is filled in.`;
-    fGen.foot.innerHTML = `Source: EIA Open Data API, <code>electricity/rto/fuel-type-data</code> (EIA-930, respondent ${esc(ex.series)}), grouped by the fuel lookup on Sources and method. ${state.scope === 'pjm' ? 'PJM reports no storage codes to EIA-930, so there is no storage line.' : ''}`;
+    fGen.foot.innerHTML = `Source: EIA Open Data API, <code>electricity/rto/fuel-type-data</code> (EIA-930, respondent ${esc(ex.series)}), grouped by the fuel lookup on Sources and method. <b>Note:</b> this series begins in July 2018${genTrimmed ? `, so the chart starts at ${esc(fmtTitle(view, genTrimmed))} while the demand chart above starts earlier` : ''}. EIA did not collect net generation by fuel on Form EIA-930 before then, so no earlier hours exist for any region; demand has been collected since July 2015. ${state.scope === 'pjm' ? 'PJM reports no storage codes to EIA-930, so there is no storage line.' : ''}`;
     f923.foot.innerHTML = `Source: EIA Open Data API, <code>electricity/electric-power-operational-data</code> (EIA-923), U.S., all sectors.`;
     $('x923').hidden = !ex.monthly_923;
     const t = tableData(view, ex);
