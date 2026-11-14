@@ -277,6 +277,51 @@ export async function mountMap(root, data, opt) {
     updateDcCount();
   });
 
+
+  // ---- what the map shows: where the data center floor area is against where capacity was added (static, whole window)
+  {
+    const STATE = { VA: 'Virginia', OH: 'Ohio', IL: 'Illinois', NJ: 'New Jersey', PA: 'Pennsylvania', TX: 'Texas', CA: 'California', GA: 'Georgia', AZ: 'Arizona', OR: 'Oregon', WA: 'Washington', NC: 'North Carolina', MI: 'Michigan', KY: 'Kentucky', WV: 'West Virginia', DE: 'Delaware', TN: 'Tennessee', IA: 'Iowa', NY: 'New York', NV: 'Nevada', UT: 'Utah', NE: 'Nebraska', MD: 'Maryland', IN: 'Indiana' };
+    // PJM view: only states where EIA lists at least 1,000 MW of PJM generators, so a state PJM barely touches is not counted
+    const fleetBy = {};
+    op.forEach((u) => { fleetBy[u.state] = (fleetBy[u.state] || 0) + (u.mw || 0); });
+    const inScope = (st) => US || (pjmStates.has(st) && (fleetBy[st] || 0) >= 1000);
+    const bld = dcs.filter((d) => d.type === 'building' && d.lat != null && inScope(d.state_abb));
+    const by = {};
+    const row = (s) => (by[s] ??= { s, sqft: 0, add: 0, gas: 0, solar: 0, ret: 0 });
+    bld.forEach((d) => { row(d.state_abb).sqft += d.sqft || 0; });
+    winUnits.filter((u) => inScope(u.state)).forEach((u) => { const r = row(u.state); r.add += u.mw || 0; if (u.group === 'gas') r.gas += u.mw || 0; if (u.group === 'solar') r.solar += u.mw || 0; });
+    retired.filter((u) => inScope(u.state)).forEach((u) => { row(u.state).ret += u.mw || 0; });
+    const all = Object.values(by), tSq = sum(all.map((r) => r.sqft)), tAdd = sum(all.map((r) => r.add)), tGas = sum(all.map((r) => r.gas));
+    const top = all.filter((r) => r.sqft > 0).sort((a, c) => c.sqft - a.sqft).slice(0, 5);
+    if (top.length && tSq > 0 && tAdd > 0) {
+      const lead = top[0];
+      // the county with the most floor area, and what was added within 100 km of it
+      const cty = {};
+      bld.forEach((d) => { const k = `${d.county}|${d.state_abb}`; (cty[k] ??= { k, sqft: 0, lat: 0, lon: 0, n: 0 }); cty[k].sqft += d.sqft || 0; cty[k].lat += d.lat; cty[k].lon += d.lon; cty[k].n++; });
+      const hub = Object.values(cty).sort((a, c) => c.sqft - a.sqft)[0];
+      const hLat = hub.lat / hub.n, hLon = hub.lon / hub.n, rad = (x) => (x * Math.PI) / 180;
+      const km = (la, lo) => { const a = Math.sin(rad(la - hLat) / 2) ** 2 + Math.cos(rad(hLat)) * Math.cos(rad(la)) * Math.sin(rad(lo - hLon) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); };
+      const nearU = winUnits.filter((u) => u.lat != null && km(u.lat, u.lon) <= 100);
+      const nAdd = sum(nearU.map((u) => u.mw || 0)), nSolar = sum(nearU.filter((u) => u.group === 'solar').map((u) => u.mw || 0)), nGas = sum(nearU.filter((u) => u.group === 'gas').map((u) => u.mw || 0));
+      const [cName, cSt] = hub.k.split('|');
+      const pctOf = (v, t) => (100 * v) / t;
+      const maxP = Math.max(...top.flatMap((r) => [pctOf(r.sqft, tSq), pctOf(r.add, tAdd)]));
+      const bar = (p, color, text) => `<div class="geo__bar"><i style="width:${Math.max(1.5, (100 * p) / maxP)}%;background:${color}"></i><b>${esc(text)}</b></div>`;
+      const sec = document.createElement('section');
+      sec.className = 'side__section geo';
+      sec.innerHTML = `<h2>What the map shows</h2>
+        <p class="geo__head">${esc(STATE[lead.s] || lead.s)} has ${nf0.format(pctOf(lead.sqft, tSq))}% of the data center floor area and ${nf0.format(pctOf(lead.add, tAdd))}% of the capacity added${tGas > 0 ? `, including ${nf0.format(lead.gas)} MW of the ${nf0.format(tGas)} MW of new gas` : ''}.</p>
+        <div class="geo__key"><span><i style="background:#15323d"></i>Share of data center floor area</span><span><i style="background:#e0903f"></i>Share of capacity added</span></div>
+        <div class="geo__rows">${top.map((r) => `<div class="geo__row"><span class="geo__st">${esc(STATE[r.s] || r.s)}</span><div>${bar(pctOf(r.sqft, tSq), '#15323d', `${nf0.format(pctOf(r.sqft, tSq))}% · ${(r.sqft / 1e6).toFixed(1)}M sq ft`)}${bar(pctOf(r.add, tAdd), '#e0903f', `${nf0.format(pctOf(r.add, tAdd))}% · ${nf0.format(r.add)} MW`)}</div></div>`).join('')}</div>
+        <p class="side__sub geo__near">Within 100 km of ${esc(cName)}, ${esc(cSt)}, which has the most floor area of any county (${(hub.sqft / 1e6).toFixed(1)}M sq ft): <strong>${nf0.format(nAdd)} MW</strong> added, of which ${nf0.format(nSolar)} MW solar and ${nf0.format(nGas)} MW gas.</p>
+        <button class="btn" type="button" id="geoZoom">Zoom to ${esc(cName)}</button>
+        <p class="side__sub geo__fine">Whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; it does not follow the slider. Floor area is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. Capacity is EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window. Shares are of the ${US ? 'national' : 'PJM-state'} totals.</p>`;
+      const side = root.querySelector('.mapview__side');
+      side.insertBefore(sec, side.children[1]);
+      sec.querySelector('#geoZoom').addEventListener('click', () => map.flyTo({ center: [hLon, hLat], zoom: 8.2, essential: false }));
+    }
+  }
+
   // ---- side panel ----
   function renderSummary() {
     const T = WIN + 1 + state.s;
