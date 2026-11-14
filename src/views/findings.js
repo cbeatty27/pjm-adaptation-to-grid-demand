@@ -5,6 +5,7 @@ import { Chart, GRID, table, simple, yieldFigure, dem } from '../lib/figs.js';
 import { demandTrendFigure, loadShapeFigure, generationTrendFigure, capacityLinkFigure, complete } from '../lib/trendfigs.js';
 import { trendFit, breakScan, rolling12, RELEASE } from '../lib/stats.js';
 import { loadUS, loadExplorer } from '../lib/data.js';
+import { miniBars, miniLine } from '../lib/mini.js';
 
 let lastScope = 'pjm';
 
@@ -42,44 +43,70 @@ export async function mount(root, data) {
     const grown = st ? Object.entries(st).filter(([, v]) => v.implied_cf != null).sort((a, c) => c[1].d_cap_mw - a[1].d_cap_mw)[0] : null;
     const gl = Object.fromEntries(meta.groups.map((g) => [g.key, g.label]));
     const sum = (k) => (st ? Object.values(st).reduce((a, v) => a + v[k], 0) : null);
-    // ---- the conclusions, in plain words, each computed from the same data as the chart it points to
+    // ---- the conclusions: one headline, one small graphic, one line of evidence each
     const up = (v, d = 1) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(d)}%`;
     const gwS = (mw) => `${nf1.format(Math.abs(mw) / 1000)} GW`;
+    const C = { grey: '#9fb3bd', ink: '#15323d', warm: TIME.warm, cool: TIME.cool, gas: '#e87e42', solar: '#d9ae36' };
     const items = [];
+    const valsD = complete(mo.avg_mw, mo.coverage);
     if (f) {
-      const scan = breakScan(mo.months, complete(mo.avg_mw, mo.coverage));
-      const when = scan && scan.best.m !== RELEASE ? ` The change fits best at ${ymLabel(scan.best.m)}; any month from ${ymLabel(scan.nearFrom)} to ${ymLabel(scan.nearTo)} fits nearly as well.` : '';
+      const scan = breakScan(mo.months, valsD);
+      const roll = rolling12(mo.months, valsD), cf = rolling12(mo.months, mo.months.map((m) => f.fitAt(m, true)));
+      const i0 = roll.findIndex((v) => v != null), ri = mo.months.indexOf(RELEASE) - i0;
+      const r2 = roll.slice(i0), c2 = cf.slice(i0).map((v, i) => (i >= ri ? v : null));
+      const g = miniLine([{ vals: r2, color: C.cool, colorAfter: C.warm }, { vals: c2, color: '#8d9aa2', dash: '2 4', width: 1.6 }], { split: ri, splitText: 'ChatGPT released', startText: `${nf0.format(r2[0])} MW`, endText: `${nf0.format(l.avg_mw)} MW`, aria: 'Average demand over 12 months, flat before the release and rising after; dotted line is the earlier trend continued' });
+      const when = scan && scan.best.m !== RELEASE ? ` The turn fits best at ${ymLabel(scan.best.m)}; any month from ${ymLabel(scan.nearFrom)} to ${ymLabel(scan.nearTo)} fits nearly as well.` : '';
       items.push(f.significant && f.dSlope > 0
-        ? [`Demand growth sped up, from ${up((100 * f.pre) / b.avg_mw)} to ${up((100 * f.post) / b.avg_mw)} a year.`, `Average demand is ${pct(dem(b.avg_mw, l.avg_mw))} above the 12 months before the release, and the change in trend is statistically distinguishable.${when}`]
-        : [`Demand is ${pct(dem(b.avg_mw, l.avg_mw))} above the 12 months before the release, but the trend has not changed by a distinguishable amount.`, `It was changing ${up((100 * f.pre) / b.avg_mw)} a year before and ${up((100 * f.post) / b.avg_mw)} a year after.`]);
+        ? { h: `Demand growth sped up, from ${up((100 * f.pre) / b.avg_mw)} to ${up((100 * f.post) / b.avg_mw)} a year.`, g, d: `12-month average demand; the dotted line is where the earlier trend pointed.${when}` }
+        : { h: `Demand is ${pct(dem(b.avg_mw, l.avg_mw))} higher, but its trend has not changed by a distinguishable amount.`, g, d: `It was changing ${up((100 * f.pre) / b.avg_mw)} a year before and ${up((100 * f.post) / b.avg_mw)} a year after.` });
     }
-    if (f && fLow && fLow.significant && fLow.post > 0) items.push([`The growth is round-the-clock: the quietest hour is rising ${nf0.format((100 * fLow.post) / f.post)}% as fast as the average.`, `Demand in the lowest hour of each month is rising ${nf0.format(fLow.post)} MW a year. Weather-driven demand would not lift the quietest hour; load that runs every hour does.`]);
+    if (f && fLow && fLow.significant && fLow.post > 0) {
+      const fHigh = trendFit(mo.months, complete(mo.peak_mw, mo.coverage));
+      items.push({ h: `The growth is round-the-clock: the quietest hour is rising ${nf0.format((100 * fLow.post) / f.post)}% as fast as the average.`,
+        g: miniBars([{ label: 'Quietest hour', value: fLow.post, text: `+${nf0.format(fLow.post)} MW/yr`, color: C.ink }, { label: 'Average', value: f.post, text: `+${nf0.format(f.post)} MW/yr`, color: C.warm }, ...(fHigh ? [{ label: 'Busiest hour', value: fHigh.post, text: `+${nf0.format(fHigh.post)} MW/yr`, color: C.grey }] : [])]),
+        d: 'Growth per year since the release, by hour of the month. Weather lifts the busiest hours; only load that runs every hour lifts the quietest.' });
+    }
     if (!us) {
-      const zl = Object.entries(demand.comparison.zones || {}).map(([z, v]) => ({ name: demand.zones[z]?.name || z, d: v.latest.avg_mw - v.baseline.avg_mw })).sort((a, c) => c.d - a.d);
+      const zl = Object.entries(demand.comparison.zones || {}).map(([z, v]) => ({ z, name: (demand.zones[z]?.name || z).replace(/ zone$/i, ''), d: v.latest.avg_mw - v.baseline.avg_mw })).sort((a, c) => c.d - a.d);
       const tz = zl.reduce((a, r) => a + r.d, 0);
-      if (zl.length && tz > 0) items.push([`${nf0.format((100 * zl[0].d) / tz)}% of the growth is in one zone: ${zl[0].name.replace(/ zone$/i, '')}.`, `That zone added ${nf0.format(zl[0].d)} MW of average demand${zl[1] ? `; the next largest, ${zl[1].name.replace(/ zone$/i, '')}, added ${nf0.format(zl[1].d)} MW` : ''}.`]);
+      if (zl.length && tz > 0) {
+        const top = zl.slice(0, 4), rest = zl.slice(4).reduce((a, r) => a + r.d, 0);
+        items.push({ h: `${nf0.format((100 * zl[0].d) / tz)}% of the growth is in one zone: ${zl[0].name}.`,
+          g: miniBars([...top.map((r, i) => ({ label: r.name.length > 17 ? r.z : r.name, value: r.d, text: `+${nf0.format(r.d)} MW`, color: i === 0 ? C.warm : C.grey })), { label: `Other ${zl.length - 4} zones`, value: rest, text: `${rest >= 0 ? '+' : '−'}${nf0.format(Math.abs(rest))} MW`, color: C.grey }], { labelW: 132, rowH: 28, barH: 15 }),
+          d: 'Change in average demand by PJM zone, latest 12 months against the 12 before the release.' });
+      }
     }
     if (st && cg.baseline) {
-      const H = 8760 / 1e6;
-      const dc = sum('d_cap_mw'), dg = sum('d_gen_mw');
-      if (grown) items.push([`${gwS(grown[1].d_cap_mw)} of ${gl[grown[0]].toLowerCase()} was added, and it delivers ${gwS(grown[1].d_gen_mw)} on average.`, `Each megawatt of ${gl[grown[0]].toLowerCase()} added went with ${nf0.format((1000 * grown[1].d_gen_mw) / grown[1].d_cap_mw)} kW of average output. Across six fuels, capacity in service changed by ${dc >= 0 ? '+' : '−'}${gwS(dc)} after retirements and average output by ${dg >= 0 ? '+' : '−'}${gwS(dg)}.`]);
-      const r = Object.entries(st).map(([g, v]) => { const cf0 = cg.baseline.groups[g]?.cf; return cf0 == null ? null : { g, use: (v.d_gen_mw - v.d_cap_mw * cf0) * 8760 * 1e-6, cap: v.d_cap_mw * cf0 * 8760 * 1e-6, cf0, cf1: cg.windows[cg.windows.length - 1].groups[g]?.cf }; }).filter(Boolean).sort((a, c) => c.use - a.use)[0];
+      if (grown) {
+        const nm = gl[grown[0]].toLowerCase();
+        items.push({ h: `${gwS(grown[1].d_cap_mw)} of ${nm} was added. It delivers ${gwS(grown[1].d_gen_mw)} on average.`,
+          g: miniBars([{ label: 'Capacity added', value: grown[1].d_cap_mw, text: gwS(grown[1].d_cap_mw), color: C.grey }, { label: 'Average output', value: grown[1].d_gen_mw, text: gwS(grown[1].d_gen_mw), color: C.solar }, ...(!us ? [{ label: 'Demand growth', value: l.avg_mw - b.avg_mw, text: gwS(l.avg_mw - b.avg_mw), color: C.warm }] : [])]),
+          d: `Each megawatt of ${nm} added went with ${nf0.format((1000 * grown[1].d_gen_mw) / grown[1].d_cap_mw)} kW of average output.` });
+      }
+      const r = Object.entries(st).map(([g2, v]) => { const cf0 = cg.baseline.groups[g2]?.cf; return cf0 == null ? null : { g: g2, use: (v.d_gen_mw - v.d_cap_mw * cf0) * 8760 * 1e-6, cap: v.d_cap_mw * cf0 * 8760 * 1e-6, cf0, cf1: cg.windows[cg.windows.length - 1].groups[g2]?.cf }; }).filter(Boolean).sort((a, c) => c.use - a.use)[0];
       const totTwh = Object.values(st).reduce((a, v) => a + v.d_twh, 0);
-      if (r && r.use > 0) items.push([r.use > 0.5 * totTwh ? `Most of the extra energy came from existing ${gl[r.g].toLowerCase()} plants running more, not from new plants.` : `Existing ${gl[r.g].toLowerCase()} plants running more added ${nf0.format(r.use)} TWh a year.`,
-        `${gl[r.g]} output rose ${nf1.format(r.use)} TWh a year from the fleet running more (capacity factor ${(100 * r.cf0).toFixed(1)}% to ${(100 * r.cf1).toFixed(1)}%) and ${r.cap >= 0 ? '' : '−'}${nf1.format(Math.abs(r.cap))} TWh from its change in capacity.`]);
-      void H;
+      if (r && r.use > 0) {
+        const nm = gl[r.g].toLowerCase();
+        items.push({ h: r.use > 0.5 * totTwh ? `Most of the extra energy came from existing ${nm} plants running more, not from new plants.` : `Existing ${nm} plants running more added ${nf0.format(r.use)} TWh a year.`,
+          g: miniBars([{ label: 'Running more', value: r.use, text: `+${nf1.format(r.use)} TWh/yr`, color: C.gas }, { label: 'New capacity', value: r.cap, text: `${r.cap >= 0 ? '+' : '−'}${nf1.format(Math.abs(r.cap))} TWh/yr`, color: C.grey }]),
+          d: `Where the rise in ${nm} output came from. The fleet's capacity factor went from ${(100 * r.cf0).toFixed(1)}% to ${(100 * r.cf1).toFixed(1)}%.` });
+      }
     }
     if (ex?.monthly?.gen && !us) {
       const mm = ex.monthly, keys = Object.keys(mm.gen.avg_mw);
       const tot = mm.months.map((_, i) => { if ((mm.gen.coverage[i] ?? 0) < 0.95) return null; let t = 0, any = false; keys.forEach((k) => { const v = mm.gen.avg_mw[k][i]; if (v != null) { t += v; any = true; } }); return any ? t : null; });
       const rG = rolling12(mm.months, tot), rD = rolling12(mm.months, complete(mm.demand.avg_mw, mm.demand.coverage));
-      const i0 = mm.months.indexOf('2022-10'); let i1 = -1; rG.forEach((v, i) => { if (v != null && rD[i] != null) i1 = i; });
-      if (i0 >= 0 && i1 > i0 && rG[i0] != null && rD[i0] != null) {
-        const n0 = rG[i0] - rD[i0], n1 = rG[i1] - rD[i1];
-        if (n0 > 0 && n1 >= 0 && n1 < n0) items.push([`PJM sends less power to its neighbours: its surplus fell from ${nf0.format(n0)} MW to ${nf0.format(n1)} MW.`, 'Generation minus demand, on average. Part of the growth in demand was met by keeping power that used to leave.']);
+      const net = rG.map((v, i) => (v != null && rD[i] != null ? v - rD[i] : null));
+      const i0 = mm.months.indexOf('2022-10'); let i1 = -1; net.forEach((v, i) => { if (v != null) i1 = i; });
+      if (i0 >= 0 && i1 > i0 && net[i0] != null) {
+        const n0 = net[i0], n1 = net[i1];
+        if (n0 > 0 && n1 >= 0 && n1 < n0) items.push({ h: `PJM sends less power to its neighbours: its surplus fell from ${nf0.format(n0)} MW to ${nf0.format(n1)} MW.`,
+          g: miniBars([{ label: 'Before the release', value: n0, text: `${nf0.format(n0)} MW`, color: C.cool }, { label: 'Latest 12 months', value: n1, text: `${nf0.format(n1)} MW`, color: C.warm }], { labelW: 132 }),
+          d: 'Generation minus demand, on average. Part of the growth in demand was met by keeping power that used to leave.' });
       }
     }
-    root.querySelector('#ledger').innerHTML = items.map(([h, d], i) => `<li><span class="concl__n">${i + 1}</span><div><strong>${esc(h)}</strong><p>${esc(d)}</p></div></li>`).join('');
+    root.querySelector('#ledger').dataset.n = String(items.length);
+    root.querySelector('#ledger').innerHTML = items.map((it, i) => `<li><span class="concl__n">${i + 1}</span><strong>${esc(it.h)}</strong>${it.g}<p>${esc(it.d)}</p></li>`).join('');
     const push = (x) => x && parts.push(x);
 
     push(demandTrendFigure(figs, { demand, scope: name, series: us ? 'respondent US48, the Lower 48 total' : 'respondent PJM' }));

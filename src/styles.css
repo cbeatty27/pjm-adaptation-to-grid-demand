@@ -251,11 +251,15 @@ main { flex: 1; min-height: 0; outline: none; }
 .mapswitch { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); margin-top: 10px; }
 .mapswitch .seg { box-shadow: 0 1px 6px rgba(21, 50, 61, .18); background: var(--panel); }
 
-/* findings: conclusions list */
-.concl { list-style: none; margin: 22px 0 6px; padding: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-panel); overflow: hidden; }
-.concl li { display: flex; gap: 16px; padding: 16px 22px; margin: 0; border-top: 1px solid var(--rule); align-items: baseline; }
-.concl li:first-child { border-top: 0; }
-.concl__n { flex: none; width: 26px; font-weight: 700; font-size: 20px; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
-.concl strong { display: block; font-size: 19px; line-height: 1.3; letter-spacing: -0.01em; color: var(--ink); max-width: 62ch; }
-.concl p { margin: 4px 0 0; color: var(--ink-2); font-size: 14.5px; max-width: 78ch; }
+/* findings: conclusion cards, each with one small graphic */
+.concl { list-style: none; margin: 22px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; }
+.concl li { margin: 0; padding: 18px 20px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-panel); display: flex; flex-direction: column; gap: 10px; }
+.concl__n { font-weight: 700; font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.concl strong { font-size: 18px; line-height: 1.28; letter-spacing: -0.01em; color: var(--ink); min-height: 2.56em; }
+.concl p { margin: auto 0 0; color: var(--ink-3); font-size: 13px; line-height: 1.45; }
 .concl__note { margin: 8px 4px 0; font-size: 13px; color: var(--ink-3); max-width: 90ch; }
+.mini { width: 100%; height: auto; display: block; margin: 2px 0; }
+.mini__lab { font-size: 11.5px; fill: #5b7682; }
+.mini__val { font-size: 12.5px; font-weight: 600; fill: #15323d; }
+.concl[data-n='4'], .concl[data-n='2'] { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+@media (max-width: 480px) { .concl, .concl[data-n='4'], .concl[data-n='2'] { grid-template-columns: 1fr; } }
