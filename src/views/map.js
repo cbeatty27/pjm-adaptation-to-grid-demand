@@ -94,25 +94,27 @@ export async function mountMap(root, data, opt) {
       <aside class="mapview__side" aria-label="Summary and layers">
         <section class="side__section" aria-live="polite">
           <h2 id="sumTitle"></h2>
-          <div class="side__big num"><span id="sumMw"></span><small>MW nameplate</small></div>
+          <div class="side__big num"><span id="sumMw"></span><small>GW</small></div>
           <p class="side__sub" id="sumSub"></p>
-          <p class="side__sub" id="sumRet"></p>
           <ul class="fuelrows" id="fuelRows"></ul>
+          <p class="side__sub" id="sumRet"></p>
         </section>
         <section class="side__section">
-          <h2>Layers</h2>
+          <h2>Show on the map</h2>
           <div class="toggles">
-            ${retired.length || opt.retired ? `<label class="check"><input type="checkbox" id="lyRet" checked><span>Generators retired since Dec 2022<small>Hollow rings in the fuel's color at the plant's location, from the "Retired" tab of EIA's monthly generator file. They follow the slider by retirement month.</small></span></label>` : ''}
-            <label class="check"><input type="checkbox" id="lyFleet"><span>Generators online before the window<small>EIA operating units with an operating month up to ${esc(ymLabel(indexYm(WIN)))}, drawn faintly for context.</small></span></label>
-            <label class="check"><input type="checkbox" id="lyDc" checked><span>Data center records (IM3, static)<small>IM3 has no online date, so these do not move with the slider. Footprint area sets symbol size; the shape shows the record type.</small></span></label>
-            <div class="chips" id="dcTypes" role="group" aria-label="IM3 record types"></div>
-            ${US ? '' : `<label class="check"><input type="checkbox" id="dcPjm" checked><span>Limit to states where EIA lists PJM generators<small>Records in other states are hidden while this is on, including New York (and Manhattan). Turn it off to see every U.S. record. State level only: it includes parts of states outside PJM, and no boundary file is used.</small></span></label>`}
+            <label class="check"><input type="checkbox" id="lyDc" checked><span>${dcGlyph('building')} Data centers</span></label>
+            ${retired.length || opt.retired ? `<label class="check"><input type="checkbox" id="lyRet" checked><span><i class="ringkey"></i> Power plants that closed</span></label>` : ''}
+            <label class="check"><input type="checkbox" id="lyFleet"><span><i class="dotkey"></i> Power plants built before ChatGPT</span></label>
           </div>
-          <p class="side__sub" id="dcCount"></p>
-        </section>
-        <section class="side__section side__fine"><details class="fineprint"><summary>What the dots show</summary>
-          <p> Each generator is one EIA-860M unit ${US ? 'in the 50 states' : 'reporting PJM as its balancing authority'}, placed at the plant's EIA coordinates. EIA does not report whether a generator serves the grid or a particular customer, so this map does not label that.</p>
-          <p id="sideCaveats"></p></details>
+          <details class="fineprint"><summary>More options and notes</summary>
+            <p>Data center record types (from IM3):</p>
+            <div class="chips" id="dcTypes" role="group" aria-label="IM3 record types"></div>
+            ${US ? '' : `<label class="check" style="margin-top:10px"><input type="checkbox" id="dcPjm" checked><span>Only data centers in PJM states<small>State level only: it includes parts of states outside PJM, and no boundary file is used. Turn it off to see every U.S. record.</small></span></label>`}
+            <p id="dcCount"></p>
+            <p>Data centers come from the IM3 atlas, which gives no opening date and no power use, so they do not move with the timeline. Symbol size follows floor space. Closed plants are hollow rings, from the “Retired” tab of EIA’s monthly generator file.</p>
+            <p>Each power plant dot is one EIA-860M generator ${US ? 'in the 50 states' : 'reporting PJM as its balancing authority'}, placed at the plant’s EIA coordinates. EIA does not report whether a generator serves the grid or a particular customer, so this map does not label that.</p>
+            <p id="sideCaveats"></p>
+          </details>
         </section>
       </aside>
       <div class="mapview__dock">
@@ -120,15 +122,10 @@ export async function mountMap(root, data, opt) {
           <button class="btn" id="play" type="button">Play</button>
           <div class="dock__date num" id="dockDate"></div>
           <div class="seg" role="group" aria-label="Timeline mode">
-            <button type="button" data-mode="cum" aria-pressed="true">Cumulative</button>
-            <button type="button" data-mode="month" aria-pressed="false">Selected month</button>
+            <button type="button" data-mode="cum" aria-pressed="true">Everything so far</button>
+            <button type="button" data-mode="month" aria-pressed="false">This month only</button>
           </div>
-          <div class="seg" role="group" aria-label="Play speed">
-            <button type="button" data-speed="900" aria-pressed="false">Slow</button>
-            <button type="button" data-speed="450" aria-pressed="true">Normal</button>
-            <button type="button" data-speed="180" aria-pressed="false">Fast</button>
-          </div>
-          <span class="dock__hint">Bars: MW of generators reaching operation each month, by fuel (tallest bar ${nf0.format(maxMonth)} MW). Drag, or use the arrow keys.</span>
+          <span class="dock__hint">Each bar is the power plants that opened that month. Press Play or drag to travel through time.</span>
         </div>
         <div class="ruler" id="ruler" tabindex="0" role="slider" aria-label="Timeline month" aria-valuemin="0" aria-valuemax="${N - 1}"><svg id="rulerSvg" aria-hidden="true"></svg></div>
       </div>
@@ -185,6 +182,15 @@ export async function mountMap(root, data, opt) {
     map.setLayoutProperty('dc', 'visibility', state.showDc ? 'visible' : 'none');
   }
 
+  function fitAll(animate) {
+    if (US) { map.fitBounds([[-125.5, 24.2], [-66.5, 49.6]], { padding: { top: 20, left: 20, right: 20, bottom: 40 }, animate }); return; }
+    const pts = units.filter((u) => u.lat != null && u.lon != null);
+    if (!pts.length) return;
+    const bb = new maplibregl.LngLatBounds();
+    pts.forEach((u) => bb.extend([u.lon, u.lat]));
+    map.fitBounds(bb, { padding: { top: 30, left: 30, right: 30, bottom: 50 }, animate, maxZoom: 8 });
+  }
+
   // ---- legend: circle-size scale (same sizes as the dots at the current zoom) and fuel colors ----
   const SCALE = [1, 100, 300, 500, 750, 1000];
   const hasRet = !!opt.retired;
@@ -199,12 +205,12 @@ export async function mountMap(root, data, opt) {
       const x = x0 + mwv * perMw;
       parts.push(`<circle cx="${x.toFixed(1)}" cy="${cy}" r="${radiusPx(mwv, z).toFixed(2)}" fill="#141b2d"/>`,
         `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${axisY}" y2="${axisY + 6}" stroke="#5b7886"/>`,
-        `<text x="${x.toFixed(1)}" y="${axisY + 19}" text-anchor="middle" font-size="11" fill="#3f5c68">${nf0.format(mwv)}</text>`);
+        `<text x="${x.toFixed(1)}" y="${axisY + 19}" text-anchor="middle" font-size="11" fill="#454d63">${nf0.format(mwv)}</text>`);
     }
-    $('maplegend').innerHTML = `<div class="ml__t">Circle area is proportional to capacity (MW)</div>
+    $('maplegend').innerHTML = `<div class="ml__t">Circles are power plants. Bigger circle, bigger plant (MW).</div>
       <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">${parts.join('')}</svg>
       <ul class="ml__fuels">${groups.map((g) => `<li><i style="background:${FUEL_COLOR[g.key]}"></i>${esc(g.label)}</li>`).join('')}</ul>
-      ${hasRet ? `<p class="ml__n"><i class="ring"></i>Hollow ring: generator retired since Dec 2022</p>` : ''}`;
+      <p class="ml__n">${dcGlyph('building')}Data center${hasRet ? '<i class="ring" style="margin-left:14px"></i>Plant that closed' : ''}</p>`;
   }
   drawLegend();
   if (US) map.on('zoom', drawLegend);
@@ -224,14 +230,7 @@ export async function mountMap(root, data, opt) {
     map.addLayer({ id: 'ret', type: 'circle', source: 'ret', paint: { 'circle-color': 'rgba(255,255,255,0.35)', 'circle-stroke-color': colorExpr, 'circle-stroke-width': 2.2, 'circle-radius': radius } });
     map.addLayer({ id: 'win', type: 'circle', source: 'win', paint: { 'circle-color': colorExpr, 'circle-opacity': 0.94, 'circle-radius': radius, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.2 } });
 
-    const pts = units.filter((u) => u.lat != null && u.lon != null);
-    if (US) {
-      map.fitBounds([[-125.5, 24.2], [-66.5, 49.6]], { padding: { top: 20, left: 20, right: 20, bottom: 40 }, animate: false });
-    } else if (pts.length) {
-      const b = new maplibregl.LngLatBounds();
-      pts.forEach((u) => b.extend([u.lon, u.lat]));
-      map.fitBounds(b, { padding: { top: 30, left: 30, right: 30, bottom: 50 }, animate: false, maxZoom: 8 });
-    }
+    fitAll(false);
     applyFilters();
 
     const pop = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
@@ -290,17 +289,18 @@ export async function mountMap(root, data, opt) {
       sec.className = 'side__section geo';
       sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : `${esc(stateName(G.lead.s))} has the data centers. ${esc(stateName(G.builder.s))} got the power plants.`}</h2>
         ${pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' })}
-        <ul class="geo__facts">
-          <li><b>${nf0.format(G.near.gas)} MW</b> of new gas plants within 100 km of ${esc(G.hub.name)}, ${esc(G.hub.st)}, the county with the most data center floor space.</li>
-          ${G.gasTop.length === 2 && G.tGas > 0 ? `<li><b>${nf0.format(G.gasTop[0].gas + G.gasTop[1].gas)} of ${nf0.format(G.tGas)} MW</b> of new gas plants went to ${esc(stateName(G.gasTop[0].s))} and ${esc(stateName(G.gasTop[1].s))}.</li>` : ''}
-        </ul>
-        <div class="geo__btns"><button class="btn" type="button" id="geoZoom">Zoom to ${esc(G.hub.name)}</button>${!same && G.bCenter ? `<button class="btn" type="button" id="geoZoom2">Zoom to ${esc(stateName(G.builder.s))}</button>` : ''}</div>
+        <div class="geo__go" role="group" aria-label="Look closer">
+          <button type="button" id="geoZoom"><b>${esc(G.hub.name)}, ${esc(G.hub.st)}</b><span>The most data centers of any county. New gas plants within 100 km: ${nf0.format(G.near.gas)} MW.</span></button>
+          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><b>${esc(stateName(G.builder.s))}</b><span>${nf0.format(p(G.builder.add, G.tAdd))}% of the new power plants${G.gasTop.length === 2 && G.tGas > 0 ? `, and with ${esc(stateName(G.gasTop.find((r) => r.s !== G.builder.s)?.s || G.gasTop[1].s))} nearly all of the new gas` : ''}.</span></button>` : ''}
+          <button type="button" id="geoAll"><b>${US ? 'The whole U.S.' : 'All of PJM'}</b><span>Zoom back out.</span></button>
+        </div>
         <details class="fineprint"><summary>About these numbers</summary>
           <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
           <p>Floor space is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. New power plants are EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window.</p></details>`;
       const side = root.querySelector('.mapview__side');
       side.insertBefore(sec, side.children[0]);
       sec.querySelector('#geoZoom').addEventListener('click', () => map.flyTo({ center: [G.hub.lon, G.hub.lat], zoom: 8.2, essential: false }));
+      sec.querySelector('#geoAll').addEventListener('click', () => fitAll(true));
       sec.querySelector('#geoZoom2')?.addEventListener('click', () => map.flyTo({ center: [G.bCenter.lon, G.bCenter.lat], zoom: US ? 5.2 : 6.4, essential: false }));
     }
   }
@@ -316,13 +316,13 @@ export async function mountMap(root, data, opt) {
     const mwTot = sum(all.map((g) => tot[g.key].mw));
     const nTot = sum(all.map((g) => tot[g.key].n));
     $('sumTitle').textContent = state.mode === 'cum'
-      ? `Online from Dec 2022 through ${ymLabel(indexYm(T))}`
-      : `Reaching operation in ${ymLabel(indexYm(T))}`;
-    $('sumMw').textContent = nf0.format(mwTot);
-    $('sumSub').textContent = `${nf0.format(nTot)} generator units. Bars show each fuel's share of the MW shown. Click a fuel to hide or show it.`;
+      ? `New power plants, Dec 2022 to ${ymLabel(indexYm(T))}`
+      : `New power plants in ${ymLabel(indexYm(T))}`;
+    $('sumMw').textContent = (mwTot / 1000).toFixed(mwTot >= 100 ? 1 : 2);
+    $('sumSub').textContent = `${nf0.format(nTot)} generators. Tap a fuel to hide or show it.`;
     if (opt.retired) {
       const rr = (opt.retired || []).filter((r) => r.ret && ymIndex(r.ret) > WIN && (state.mode === 'cum' ? ymIndex(r.ret) <= T : ymIndex(r.ret) === T) && state.fuels.has(r.group));
-      $('sumRet').textContent = `Retired in the same period: ${nf0.format(sum(rr.map((r) => r.mw)))} MW (${nf0.format(rr.length)} units, ${meta.retired.capacity_basis}).`;
+      $('sumRet').innerHTML = `Closed in the same period: <b>${(sum(rr.map((r) => r.mw)) / 1000).toFixed(1)} GW</b>`;
     }
     // Bars show each fuel's share of all capacity in the period (not relative to the largest fuel, which would
     // pin the biggest fuel at full width), so they move as the slider moves.
@@ -330,7 +330,7 @@ export async function mountMap(root, data, opt) {
     $('fuelRows').innerHTML = groups.map((g) => { const sh = (100 * tot[g.key].mw) / allMw; return `<li><button class="fuelrow" type="button" data-fuel="${g.key}" aria-pressed="${state.fuels.has(g.key)}">
         <i style="background:${FUEL_COLOR[g.key]}"></i><span>${esc(g.label)}</span>
         <span class="bar" title="${sh.toFixed(1)}% of the capacity shown"><b style="width:${sh}%;background:${FUEL_COLOR[g.key]}"></b></span>
-        <span class="v">${nf0.format(tot[g.key].mw)}</span><span class="pc">${sh >= 0.5 ? Math.round(sh) : sh > 0 ? '<1' : 0}%</span></button></li>`; }).join('');
+        <span class="v">${(tot[g.key].mw / 1000).toFixed(1)}</span><span class="pc">${sh >= 0.5 ? Math.round(sh) : sh > 0 ? '<1' : 0}%</span></button></li>`; }).join('');
   }
   $('fuelRows').addEventListener('click', (e) => {
     const b = e.target.closest('[data-fuel]'); if (!b) return;
@@ -341,7 +341,7 @@ export async function mountMap(root, data, opt) {
 
   function updateDcCount() {
     const n = dcs.filter((d) => state.dcTypes.has(d.type) && (US || !state.dcPjmOnly || pjmStates.has(d.state_abb))).length;
-    $('dcCount').textContent = state.showDc ? `${nf0.format(n)} IM3 records shown (of ${nf0.format(dcs.length)}). A campus and the buildings inside it are separate records, so this is not a count of facilities.` : '';
+    $('dcCount').textContent = `${nf0.format(n)} IM3 records shown (of ${nf0.format(dcs.length)}). A campus and the buildings inside it are separate records, so this is not a count of facilities.`;
   }
   $('dcTypes').innerHTML = ['building', 'campus', 'point'].map((t) => `<button class="chip" type="button" data-type="${t}" aria-pressed="true">${dcGlyph(t)}${t}</button>`).join('');
   $('dcTypes').addEventListener('click', (e) => {

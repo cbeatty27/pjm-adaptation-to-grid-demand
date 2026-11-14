@@ -1,7 +1,7 @@
 // Large, plain graphics for the story page. One idea each, numbers written on the marks, no chart jargon.
 import { esc } from './format.js';
 
-export const C = { ink: '#141b2d', mute: '#6b7389', grey: '#b3b9c7', line: '#dde0e8', hot: '#2b44d8', gas: '#e87e42', solar: '#d9ae36', solarSoft: '#f1e2b0' };
+export const C = { ink: '#141b2d', mute: '#6b7389', grey: '#b3b9c7', line: '#dde0e8', hot: '#2b44d8', hotSoft: '#8f9df0', gas: '#e87e42', solar: '#d9ae36', solarSoft: '#f1e2b0' };
 
 // Horizontal bars in HTML, so they reflow on a phone. items: [{ label, value, text, color, soft? }]
 export function bars(items, { max = null } = {}) {
@@ -21,12 +21,12 @@ export function pairs(rows, { aLabel, bLabel, aColor = C.ink, bColor = C.hot }) 
 
 // The big line: grey before the release, colour after, a dotted line where the earlier trend was heading.
 // Redraws at the container's width so type stays readable on a phone; hover or touch shows any month.
-export function mountLine(el, { months, vals, ghost = null, split, fmt, label, splitLabel, ghostLabel, aria }) {
+export function mountLine(el, { months, vals, ghost = null, trend = null, preLabel = '', postLabel = '', split, fmt, label, splitLabel, ghostLabel, aria }) {
   el.classList.add('bigline');
   el.innerHTML = '<svg role="img"></svg><div class="bigline__tip" hidden></div>';
   const svg = el.querySelector('svg'), tip = el.querySelector('.bigline__tip');
   svg.setAttribute('aria-label', aria);
-  const n = vals.length, all = [...vals, ...(ghost || [])].filter((v) => v != null);
+  const n = vals.length, all = [...vals, ...(ghost || []), ...(trend || [])].filter((v) => v != null);
   const lo0 = Math.min(...all), hi0 = Math.max(...all);
   const step = [500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000].find((s) => (hi0 - lo0) / s <= 4) || 50000;
   const lo = Math.floor(lo0 / step) * step, hi = Math.ceil(hi0 / step) * step;
@@ -48,6 +48,12 @@ export function mountLine(el, { months, vals, ghost = null, split, fmt, label, s
       const gl = ghost.reduce((a, v, i) => (v != null ? i : a), -1);
       g += `<path d="${path(ghost, split, n - 1)}" fill="none" stroke="${C.mute}" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>`;
       if (gl >= 0) g += `<text x="${x(gl)}" y="${y(ghost[gl]) + 22}" text-anchor="end" font-size="${fs}" fill="${C.mute}">${esc(ghostLabel)}</text>`;
+    }
+    if (trend) {
+      g += `<path d="${path(trend, 0, split)}" fill="none" stroke="${C.ink}" stroke-width="2" stroke-dasharray="7 6"/><path d="${path(trend, split, n - 1)}" fill="none" stroke="${C.ink}" stroke-width="2" stroke-dasharray="7 6"/>`;
+      const ft = trend.findIndex((v) => v != null);
+      if (preLabel && ft >= 0) g += `<text x="${x(ft)}" y="${y(trend[ft]) - (small ? 44 : 62)}" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.ink}">${esc(preLabel)}</text>`;
+      if (postLabel) g += `<text x="${W - pR}" y="${H - pB - 14}" text-anchor="end" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.hot}">${esc(postLabel)}</text>`;
     }
     g += `<path d="${path(vals, 0, split)}" fill="none" stroke="${C.grey}" stroke-width="${small ? 3 : 4}" stroke-linejoin="round" stroke-linecap="round"/>`;
     g += `<path d="${path(vals, split, n - 1)}" fill="none" stroke="${C.hot}" stroke-width="${small ? 4 : 5}" stroke-linejoin="round" stroke-linecap="round"/>`;

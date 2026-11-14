@@ -6,7 +6,7 @@ let last = null;
 export async function mount(root, data) {
   const hasUS = !!data.meta.has_us;
   let cleanup = null, token = 0;
-  root.innerHTML = `<div class="mapswitch"><div class="seg" role="group" aria-label="Place">${[...(hasUS ? [['us', 'U.S.']] : []), ['pjm', 'PJM']].map(([k, l]) => `<button type="button" data-place="${k}">${l}</button>`).join('')}</div></div><div id="mapHost"></div>`;
+  root.innerHTML = `<div class="mapswitch"><div class="seg" role="group" aria-label="Place">${[['pjm', 'PJM'], ...(hasUS ? [['us', 'Whole U.S.']] : [])].map(([k, l]) => `<button type="button" data-place="${k}">${l}</button>`).join('')}</div></div><div id="mapHost"></div>`;
   const host = root.querySelector('#mapHost');
   async function show(place) {
     const my = ++token;
@@ -24,6 +24,6 @@ export async function mount(root, data) {
     cleanup = c || null;
   }
   root.addEventListener('click', (e) => { const b = e.target.closest('[data-place]'); if (b && b.dataset.place !== last) show(b.dataset.place); });
-  await show(last || (hasUS ? 'us' : 'pjm'));
+  await show(last || 'pjm');
   return () => { token++; if (cleanup) cleanup(); };
 }
