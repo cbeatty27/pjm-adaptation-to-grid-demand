@@ -284,3 +284,4 @@ main { flex: 1; min-height: 0; outline: none; }
 .geo__bar b { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .geo__near { margin: 4px 0 10px; color: var(--ink-2); }
 .geo__fine { margin: 10px 0 0; font-size: 12px; }
+.geo__btns { display: flex; flex-wrap: wrap; gap: 8px; }

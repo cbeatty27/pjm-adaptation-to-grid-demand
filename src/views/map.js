@@ -307,6 +307,15 @@ export async function mountMap(root, data, opt) {
       const pctOf = (v, t) => (100 * v) / t;
       const maxP = Math.max(...top.flatMap((r) => [pctOf(r.sqft, tSq), pctOf(r.add, tAdd)]));
       const bar = (p, color, text) => `<div class="geo__bar"><i style="width:${Math.max(1.5, (100 * p) / maxP)}%;background:${color}"></i><b>${esc(text)}</b></div>`;
+      // the state that received the most new capacity, and where the new gas went
+      const nm = (r) => STATE[r.s] || r.s;
+      const builder = all.slice().sort((a, c) => c.add - a.add)[0];
+      const gasTop = all.filter((r) => r.gas > 0).sort((a, c) => c.gas - a.gas).slice(0, 2);
+      const bU = winUnits.filter((u) => u.state === builder.s && u.lat != null);
+      const bLat = sum(bU.map((u) => u.lat)) / (bU.length || 1), bLon = sum(bU.map((u) => u.lon)) / (bU.length || 1);
+      const builderTxt = builder.s !== lead.s
+        ? `<p class="side__sub geo__near"><strong>${esc(nm(builder))} received the most new capacity: ${nf0.format(builder.add)} MW</strong>, ${nf0.format(pctOf(builder.add, tAdd))}% of the total, with ${nf0.format(pctOf(builder.sqft, tSq))}% of the floor area. Of that, ${nf0.format(builder.gas)} MW is gas and ${nf0.format(builder.solar)} MW solar; ${nf0.format(builder.ret)} MW retired there.${gasTop.length === 2 && tGas > 0 ? ` ${esc(nm(gasTop[0]))} and ${esc(nm(gasTop[1]))} together took ${nf0.format(pctOf(gasTop[0].gas + gasTop[1].gas, tGas))}% of the new gas.` : ''}</p>`
+        : '';
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
       sec.innerHTML = `<h2>What the map shows</h2>
@@ -314,11 +323,13 @@ export async function mountMap(root, data, opt) {
         <div class="geo__key"><span><i style="background:#15323d"></i>Share of data center floor area</span><span><i style="background:#e0903f"></i>Share of capacity added</span></div>
         <div class="geo__rows">${top.map((r) => `<div class="geo__row"><span class="geo__st">${esc(STATE[r.s] || r.s)}</span><div>${bar(pctOf(r.sqft, tSq), '#15323d', `${nf0.format(pctOf(r.sqft, tSq))}% · ${(r.sqft / 1e6).toFixed(1)}M sq ft`)}${bar(pctOf(r.add, tAdd), '#e0903f', `${nf0.format(pctOf(r.add, tAdd))}% · ${nf0.format(r.add)} MW`)}</div></div>`).join('')}</div>
         <p class="side__sub geo__near">Within 100 km of ${esc(cName)}, ${esc(cSt)}, which has the most floor area of any county (${(hub.sqft / 1e6).toFixed(1)}M sq ft): <strong>${nf0.format(nAdd)} MW</strong> added, of which ${nf0.format(nSolar)} MW solar and ${nf0.format(nGas)} MW gas.</p>
-        <button class="btn" type="button" id="geoZoom">Zoom to ${esc(cName)}</button>
+        ${builderTxt}
+        <div class="geo__btns"><button class="btn" type="button" id="geoZoom">Zoom to ${esc(cName)}</button>${builderTxt && bU.length ? `<button class="btn" type="button" id="geoZoom2">Zoom to ${esc(nm(builder))}</button>` : ''}</div>
         <p class="side__sub geo__fine">Whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; it does not follow the slider. Floor area is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. Capacity is EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window. Shares are of the ${US ? 'national' : 'PJM-state'} totals.</p>`;
       const side = root.querySelector('.mapview__side');
       side.insertBefore(sec, side.children[1]);
       sec.querySelector('#geoZoom').addEventListener('click', () => map.flyTo({ center: [hLon, hLat], zoom: 8.2, essential: false }));
+      sec.querySelector('#geoZoom2')?.addEventListener('click', () => map.flyTo({ center: [bLon, bLat], zoom: US ? 5.2 : 6.4, essential: false }));
     }
   }
 
