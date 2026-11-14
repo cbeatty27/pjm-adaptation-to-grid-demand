@@ -51,7 +51,7 @@ export function mount(root, data) {
       const top = zs[0];
       push(simple(figs, {
         title: `${top.name} grew fastest among PJM zones: ${pct(top.ch)} in average hourly demand`,
-        note: 'Change in average hourly demand by EIA-930 subregion, latest 12 months against the 12 months before ChatGPT\'s release. Warm bars grew, cool bars shrank. Subregions are the zones PJM reports to EIA; boundaries are not drawn here.',
+        note: 'Change in average hourly demand by EIA-930 subregion, latest 12 months against the 12 months before ChatGPT\'s release. Blue bars grew, grey bars shrank. Subregions are the zones PJM reports to EIA; boundaries are not drawn here.',
         foot: 'Source: EIA Open Data API, route <code>electricity/rto/region-sub-ba-data</code> (parent PJM). Zone totals can differ slightly from the PJM-wide series. A wider hour-screening band is applied to each zone than to the PJM-wide series, because small zones have larger real swings (see Sources and method).',
         tableHtml: table(['Zone', `Avg MW ${ymLabel(b.from)}–${ymLabel(b.to)}`, `Avg MW ${ymLabel(l.from)}–${ymLabel(l.to)}`, 'Change'], zs.map((r) => [`${r.name} (${r.z})`, nf0.format(r.base), nf0.format(r.last), pct(r.ch)])),
         height: Math.max(260, zs.length * 26 + 70),

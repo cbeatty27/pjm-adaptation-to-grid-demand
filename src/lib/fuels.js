@@ -9,9 +9,9 @@ export const FUEL_COLOR = {
 
 // Time coding used on the demand charts: cool is before ChatGPT's release, warm is after.
 export const TIME = {
-  cool: '#6f97b3', warm: '#e0903f',
-  coolRamp: ['#c9d7e0', '#a9c0d0', '#86a6bd', '#5f87a5'], // 2019 to 2022, light to dark
-  warmRamp: ['#f4cf9f', '#efb06c', '#e58c3a', '#c4651f'], // 2023 to 2026, light to dark
+  cool: '#9aa3b8', warm: '#2b44d8',
+  coolRamp: ['#d9dce5', '#c1c6d3', '#a5acbd', '#868ea3'], // 2019 to 2022, light to dark
+  warmRamp: ['#bcc6f6', '#909ff0', '#5f74e6', '#2b44d8'], // 2023 to 2026, light to dark
 };
 
 export const fuelLabel = (meta) => Object.fromEntries(meta.groups.map((g) => [g.key, g.label]));

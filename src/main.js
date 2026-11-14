@@ -5,7 +5,7 @@ import { esc } from './lib/format.js';
 const view = document.getElementById('view');
 // needsUS routes read the U.S. files, which exist only when the data build included the U.S. pulls.
 const routes = {
-  findings: { load: () => import('./views/findings.js'), title: 'Findings' },
+  findings: { load: () => import('./views/findings.js'), title: 'The story' },
   maps: { load: () => import('./views/maps.js'), title: 'Map and timeline' },
   us: { load: () => import('./views/usdemand.js'), title: 'U.S. demand', needsUS: true },
   usmap: { load: () => import('./views/usmap.js'), title: 'U.S. map and timeline', needsUS: true },
@@ -17,8 +17,8 @@ const routes = {
 let cleanup = null;
 
 function setTab(name) {
-  const home = { us: 'findings', case: 'findings', usmap: 'maps', map: 'maps' }[name] || name;
-  document.querySelectorAll('.tabs a').forEach((a) => a.setAttribute('aria-selected', String(a.dataset.tab === home)));
+  const home = { us: 'data', case: 'data', usmap: 'maps', map: 'maps' }[name] || name;
+  document.querySelectorAll('.tabs a').forEach((a) => a.dataset.tab === home ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
   document.title = `${routes[name].title} | Grid demand since ChatGPT`;
 }
 
@@ -46,6 +46,7 @@ async function render() {
     view.innerHTML = '';
     cleanup = (await mod.mount(view, data, us)) || null;
     view.focus({ preventScroll: true });
+    scrollTo(0, 0);
   } catch (e) {
     console.error(e);
     view.innerHTML = `<div class="errorbox"><h2>The data could not be loaded</h2><p>${esc(e.message)}</p>
@@ -62,13 +63,6 @@ async function chrome() {
       banner.textContent = 'SYNTHETIC DEVELOPMENT DATA. Every EIA-shaped number on this page is invented for layout testing.';
       document.documentElement.style.setProperty('--banner-h', `${banner.offsetHeight}px`);
     }
-    const v = document.getElementById('vintage');
-    const rows = [
-      ['EIA generators', meta.plants?.snapshot_period ?? 'n/a'],
-      ['EIA-930 through', meta.demand?.last_month ?? 'n/a'],
-      ['IM3 atlas', 'v2026.11.02'],
-    ];
-    v.innerHTML = rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('');
   } catch { /* the view shows the error */ }
 }
 

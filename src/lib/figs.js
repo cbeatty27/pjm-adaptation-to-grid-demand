@@ -9,12 +9,12 @@ Chart.defaults.font.size = 12;
 Chart.defaults.color = '#3f5c68';
 Chart.defaults.animation = false;
 Object.assign(Chart.defaults.plugins.tooltip, {
-  backgroundColor: '#15323d', titleColor: '#ffffff', bodyColor: '#e6eef0', cornerRadius: 8, padding: 10, boxPadding: 4,
+  backgroundColor: '#141b2d', titleColor: '#ffffff', bodyColor: '#e7e9ef', cornerRadius: 8, padding: 10, boxPadding: 4,
   titleFont: { weight: '600' },
 });
 
-export const GRID = '#e6eef0';
-export const INK = '#15323d';
+export const GRID = '#e7e9ef';
+export const INK = '#141b2d';
 const BOLD = "600 12px 'Instrument Sans', sans-serif";
 
 export const f1 = (v) => Math.abs(v).toFixed(1);
@@ -598,7 +598,7 @@ export function capacityGenFigure(host, { meta, fuel, winUnits, retired, scope, 
     const over = r.ratio != null && r.ratio > 100;
     return `<tr><th scope="row"><i class="cg__dot" style="background:${FUEL_COLOR[r.k]}"></i>${esc(r.label)}</th>
       <td>${cap(r.add, FUEL_COLOR[r.k])}<b>${nf0.format(r.add)} MW</b></td>
-      <td>${cap(r.ret, '#8d9aa2')}<b>${nf0.format(r.ret)} MW</b></td>
+      <td>${cap(r.ret, '#6b7389')}<b>${nf0.format(r.ret)} MW</b></td>
       <td>${gbar(r.gen, FUEL_COLOR[r.k])}<b>${r.gen == null ? '' : `${sgn(r.gen)} TWh`}</b></td>
       <td class="cg__n">${r.add ? `${nf0.format(r.ceil)} TWh` : '–'}</td>
       <td class="cg__n ${over ? 'cg__flag' : ''}">${r.ratio == null ? '–' : `${nf0.format(r.ratio)}%`}${over ? '<small>more than the new units could make</small>' : ''}</td></tr>`;
@@ -670,14 +670,14 @@ export function yieldFigure(host, { meta, cg, scope }) {
     const bars = grow.map((g) => ({ g, a: base.groups[g]?.cf, b: latest.groups[g]?.cf, c: st[g].implied_cf }));
     views.push({
       id: 'added', label: 'Added capacity', height: Math.max(220, 120 * bars.length + 80),
-      legend: `<div class="legend__row"><span><i style="background:${TIME.cool}"></i>All capacity, 12 months to ${esc(ymLabel(base.to))}</span><span><i style="background:${TIME.warm}"></i>All capacity, 12 months to ${esc(ymLabel(latest.to))}</span><span><i style="background:#15323d"></i>Only the capacity added in between</span></div>`,
+      legend: `<div class="legend__row"><span><i style="background:${TIME.cool}"></i>All capacity, 12 months to ${esc(ymLabel(base.to))}</span><span><i style="background:${TIME.warm}"></i>All capacity, 12 months to ${esc(ymLabel(latest.to))}</span><span><i style="background:#141b2d"></i>Only the capacity added in between</span></div>`,
       note: `For fuels whose capacity grew by at least 10%: the capacity factor over all capacity in each window, and the capacity factor of the <b>added</b> capacity alone, which is the change in average energy produced (MW) divided by the change in average capacity (MW) between the two windows. It counts every unit, new and old, so it is arithmetic on EIA's totals, not a measurement of any new unit.`,
       draw: (cv) => new Chart(cv, {
         type: 'bar',
         data: { labels: bars.map((b) => label[b.g]), datasets: [
           { label: 'Earlier window', data: bars.map((b) => b.a), backgroundColor: TIME.cool, borderRadius: 4, barPercentage: 0.9 },
           { label: 'Latest window', data: bars.map((b) => b.b), backgroundColor: TIME.warm, borderRadius: 4, barPercentage: 0.9 },
-          { label: 'Added capacity', data: bars.map((b) => b.c), backgroundColor: '#15323d', borderRadius: 4, barPercentage: 0.9 }] },
+          { label: 'Added capacity', data: bars.map((b) => b.c), backgroundColor: '#141b2d', borderRadius: 4, barPercentage: 0.9 }] },
         options: { indexAxis: 'y', maintainAspectRatio: false, layout: { padding: { right: 70 } },
           scales: { x: { min: 0, max: 1, grid: { color: GRID }, ticks: { callback: (v) => `${Math.round(v * 100)}%` }, title: { display: true, text: 'Capacity factor' } }, y: { grid: { display: false } } },
           plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${pc(c.parsed.x)}` } } } },

@@ -6,7 +6,7 @@ import { loadAll, loadExplorer, loadHourly } from '../lib/data.js';
 
 const TZ = 'America/New_York';
 const DEMAND_COLOR = '#17404e';
-const BAND = '#9fb3bd';
+const BAND = '#b3b9c7';
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const etFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit' });
 const etParts = (ms) => { const p = {}; for (const x of etFmt.formatToParts(ms)) p[x.type] = x.value; return p; };
@@ -336,7 +336,7 @@ export async function mount(root, data) {
       parts.push([`${l}: generation by fuel`, `${ft(ex.gen_first_hour_utc)} to ${ft(ex.hourly_end_utc)}`, ex.groups.map((g) => gl[g]).join(', ')]);
       if (ex.monthly_923) parts.push([`${l}: EIA-923 monthly generation`, `${monLabel(ex.monthly_923.months[0])} to ${monLabel(ex.monthly_923.months[ex.monthly_923.months.length - 1])}`, 'plant-reported, 50 states and DC']);
     }
-    $('xl').innerHTML = parts.map(([k, v, s], i) => `<div style="--ledger:${['#17404e', '#e0903f', '#7aa6b8', '#35aa76', '#6f97b3', '#ce5d89'][i % 6]}"><dt>${esc(k)}</dt><dd>${esc(v)}<small>${esc(s)}</small></dd></div>`).join('');
+    $('xl').innerHTML = parts.map(([k, v, s], i) => `<div style="--ledger:${['#17404e', '#2b44d8', '#7aa6b8', '#35aa76', '#9aa3b8', '#ce5d89'][i % 6]}"><dt>${esc(k)}</dt><dd>${esc(v)}<small>${esc(s)}</small></dd></div>`).join('');
   })();
 
   await refresh();

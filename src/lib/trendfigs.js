@@ -27,11 +27,11 @@ function trendDatasets(months, vals, f, color) {
     { label: 'Observed, 12-month average', data: roll, borderColor: color, borderWidth: 2.4, pointRadius: 0, pointHoverRadius: 4, tension: 0, segment: { borderColor: (c) => (ri >= 0 && c.p1DataIndex > ri ? TIME.warm : color) } },
     ...(f ? [
       { label: 'Fitted trend', data: fitted, borderColor: INK, borderWidth: 1.6, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 0, tension: 0 },
-      { label: 'Earlier trend continued', data: cf.map((v, i) => (i >= ri + 0 && ri >= 0 ? v : null)), borderColor: '#8d9aa2', borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, pointHoverRadius: 0, tension: 0 },
+      { label: 'Earlier trend continued', data: cf.map((v, i) => (i >= ri + 0 && ri >= 0 ? v : null)), borderColor: '#6b7389', borderWidth: 1.4, borderDash: [2, 3], pointRadius: 0, pointHoverRadius: 0, tension: 0 },
     ] : []),
   ] };
 }
-const trendLegend = (color, f) => `<span><i class="line" style="background:${color}"></i>Before the release</span><span><i class="line" style="background:${TIME.warm}"></i>After</span>${f ? `<span><i class="line" style="background:${INK}"></i>Fitted trend (dashed)</span><span><i class="line" style="background:#8d9aa2"></i>Earlier trend continued (dotted)</span>` : ''}`;
+const trendLegend = (color, f) => `<span><i class="line" style="background:${color}"></i>Before the release</span><span><i class="line" style="background:${TIME.warm}"></i>After</span>${f ? `<span><i class="line" style="background:${INK}"></i>Fitted trend (dashed)</span><span><i class="line" style="background:#6b7389"></i>Earlier trend continued (dotted)</span>` : ''}`;
 const lineOpts = (months, ytitle) => ({
   maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
   scales: { x: { grid: { display: false }, ticks: yearTicks(months) }, y: { title: { display: true, text: ytitle }, grid: { color: GRID }, grace: '5%', ticks: { callback: (v) => nf0.format(v) } } },
@@ -160,12 +160,12 @@ export function capacityLinkFigure(host, { meta, cg, demand, scope }) {
     title: useUp && useUp.twhUse > 0.5 * rows.reduce((a, r) => a + r.twh, 0) ? `${scope}: the extra energy came mostly from ${label[useUp.g].toLowerCase()} plants running more, not from new capacity` : `${scope}: what was built and what it delivered, by fuel`,
     callout,
     views: [
-      { id: 'split', label: 'New capacity or running more', height: h, legend: `<span><i style="background:#9fb3bd"></i>From the change in capacity, at the earlier capacity factor</span><span><i style="background:${TIME.warm}"></i>From the fleet running more or less</span>`,
+      { id: 'split', label: 'New capacity or running more', height: h, legend: `<span><i style="background:#b3b9c7"></i>From the change in capacity, at the earlier capacity factor</span><span><i style="background:${TIME.warm}"></i>From the fleet running more or less</span>`,
         note: 'The change in each fuel\'s yearly energy split in two: the change in capacity multiplied by the capacity factor before the release, and the remainder, which is the whole fleet producing more or less per megawatt. It is arithmetic on fleet totals and does not say which units ran.',
-        draw: hb([{ label: 'From change in capacity', data: rows.map((r) => r.twhCap), backgroundColor: '#9fb3bd', borderRadius: 3 }, { label: 'From running more or less', data: rows.map((r) => r.twhUse), backgroundColor: TIME.warm, borderRadius: 3 }], 'TWh a year', (v) => `${sgn(v)} TWh`, true) },
-      { id: 'link', label: 'Built vs delivered', height: h, legend: `<span><i style="background:#9fb3bd"></i>Change in capacity in service (GW)</span><span><i style="background:${INK}"></i>Change in average output (GW)</span>`,
+        draw: hb([{ label: 'From change in capacity', data: rows.map((r) => r.twhCap), backgroundColor: '#b3b9c7', borderRadius: 3 }, { label: 'From running more or less', data: rows.map((r) => r.twhUse), backgroundColor: TIME.warm, borderRadius: 3 }], 'TWh a year', (v) => `${sgn(v)} TWh`, true) },
+      { id: 'link', label: 'Built vs delivered', height: h, legend: `<span><i style="background:#b3b9c7"></i>Change in capacity in service (GW)</span><span><i style="background:${INK}"></i>Change in average output (GW)</span>`,
         note: `For each fuel, the change in capacity in service (additions minus retirements) next to the change in its average output, both in gigawatts, between ${ymLabel(base.from)}–${ymLabel(base.to)} and ${ymLabel(latest.from)}–${ymLabel(latest.to)}. A gigawatt of capacity that ran every hour would add a gigawatt of average output.`,
-        draw: hb([{ label: 'Change in capacity', data: rows.map((r) => r.dCap / 1000), backgroundColor: '#9fb3bd', borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }, { label: 'Change in average output', data: rows.map((r) => r.dGen / 1000), backgroundColor: INK, borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }], 'Gigawatts', (v) => `${v >= 0 ? '+' : '−'}${nf1.format(Math.abs(v))} GW`) },
+        draw: hb([{ label: 'Change in capacity', data: rows.map((r) => r.dCap / 1000), backgroundColor: '#b3b9c7', borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }, { label: 'Change in average output', data: rows.map((r) => r.dGen / 1000), backgroundColor: INK, borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }], 'Gigawatts', (v) => `${v >= 0 ? '+' : '−'}${nf1.format(Math.abs(v))} GW`) },
       { id: 'table', label: 'The numbers', note: 'Capacity is the average in service over each 12-month window; output is average generation.', table: table(['Fuel', 'Change in capacity', 'Change in average output', 'Output per MW added', 'Capacity factor before', 'Capacity factor latest', 'Energy from capacity change', 'Energy from running more/less'],
         rows.map((r) => [label[r.g], `${sg0(r.dCap)} MW`, `${sg0(r.dGen)} MW`, r.dCap > 0 && r.dCap >= 0.1 * base.groups[r.g].cap_mw ? `${nf0.format((1000 * r.dGen) / r.dCap)} kW` : 'n/a', `${(100 * r.cf0).toFixed(1)}%`, `${(100 * r.cf1).toFixed(1)}%`, `${sgn(r.twhCap)} TWh`, `${sgn(r.twhUse)} TWh`])) },
     ],
@@ -177,9 +177,9 @@ export function capacityLinkFigure(host, { meta, cg, demand, scope }) {
 export function loadShapeFigure(host, { demand, scope, series }) {
   const mo = demand.monthly, months = mo.months;
   const S = [
-    { k: 'low', label: 'Lowest hour of each month', v: complete(mo.min_mw, mo.coverage), color: '#15323d' },
+    { k: 'low', label: 'Lowest hour of each month', v: complete(mo.min_mw, mo.coverage), color: '#141b2d' },
     { k: 'avg', label: 'Average of all hours', v: complete(mo.avg_mw, mo.coverage), color: TIME.warm },
-    { k: 'high', label: 'Highest hour of each month', v: complete(mo.peak_mw, mo.coverage), color: '#9fb3bd' },
+    { k: 'high', label: 'Highest hour of each month', v: complete(mo.peak_mw, mo.coverage), color: '#b3b9c7' },
   ].map((s) => ({ ...s, f: trendFit(months, s.v), roll: rolling12(months, s.v) }));
   const [low, avg, high] = S;
   if (!low.f || !avg.f) return null;

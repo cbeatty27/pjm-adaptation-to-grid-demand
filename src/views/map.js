@@ -1,10 +1,12 @@
 import maplibregl from 'maplibre-gl';
 import { FUEL_COLOR } from '../lib/fuels.js';
+import { geoStats, stateName } from '../lib/geo.js';
+import { pairs } from '../lib/story.js';
 import { esc, nf0, mw as fmtMw, ymIndex, indexYm, ymLabel, sum } from '../lib/format.js';
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 const BLANK = { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e6eef1' } }] };
-const INK = '#15323d';
+const INK = '#141b2d';
 const DC = '#17404e'; // data center symbols
 
 async function pickStyle() {
@@ -108,9 +110,9 @@ export async function mountMap(root, data, opt) {
           </div>
           <p class="side__sub" id="dcCount"></p>
         </section>
-        <section class="side__section side__fine">
-          <p><strong>What the dots show.</strong> Each generator is one EIA-860M unit ${US ? 'in the 50 states' : 'reporting PJM as its balancing authority'}, placed at the plant's EIA coordinates. EIA does not report whether a generator serves the grid or a particular customer, so this map does not label that.</p>
-          <p id="sideCaveats"></p>
+        <section class="side__section side__fine"><details class="fineprint"><summary>What the dots show</summary>
+          <p> Each generator is one EIA-860M unit ${US ? 'in the 50 states' : 'reporting PJM as its balancing authority'}, placed at the plant's EIA coordinates. EIA does not report whether a generator serves the grid or a particular customer, so this map does not label that.</p>
+          <p id="sideCaveats"></p></details>
         </section>
       </aside>
       <div class="mapview__dock">
@@ -195,7 +197,7 @@ export async function mountMap(root, data, opt) {
     const parts = [`<line x1="${x0}" x2="${x0 + 1000 * perMw}" y1="${axisY}" y2="${axisY}" stroke="#5b7886" stroke-width="1"/>`];
     for (const mwv of SCALE) {
       const x = x0 + mwv * perMw;
-      parts.push(`<circle cx="${x.toFixed(1)}" cy="${cy}" r="${radiusPx(mwv, z).toFixed(2)}" fill="#15323d"/>`,
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${cy}" r="${radiusPx(mwv, z).toFixed(2)}" fill="#141b2d"/>`,
         `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${axisY}" y2="${axisY + 6}" stroke="#5b7886"/>`,
         `<text x="${x.toFixed(1)}" y="${axisY + 19}" text-anchor="middle" font-size="11" fill="#3f5c68">${nf0.format(mwv)}</text>`);
     }
@@ -280,56 +282,26 @@ export async function mountMap(root, data, opt) {
 
   // ---- what the map shows: where the data center floor area is against where capacity was added (static, whole window)
   {
-    const STATE = { VA: 'Virginia', OH: 'Ohio', IL: 'Illinois', NJ: 'New Jersey', PA: 'Pennsylvania', TX: 'Texas', CA: 'California', GA: 'Georgia', AZ: 'Arizona', OR: 'Oregon', WA: 'Washington', NC: 'North Carolina', MI: 'Michigan', KY: 'Kentucky', WV: 'West Virginia', DE: 'Delaware', TN: 'Tennessee', IA: 'Iowa', NY: 'New York', NV: 'Nevada', UT: 'Utah', NE: 'Nebraska', MD: 'Maryland', IN: 'Indiana' };
-    // PJM view: only states where EIA lists at least 1,000 MW of PJM generators, so a state PJM barely touches is not counted
-    const fleetBy = {};
-    op.forEach((u) => { fleetBy[u.state] = (fleetBy[u.state] || 0) + (u.mw || 0); });
-    const inScope = (st) => US || (pjmStates.has(st) && (fleetBy[st] || 0) >= 1000);
-    const bld = dcs.filter((d) => d.type === 'building' && d.lat != null && inScope(d.state_abb));
-    const by = {};
-    const row = (s) => (by[s] ??= { s, sqft: 0, add: 0, gas: 0, solar: 0, ret: 0 });
-    bld.forEach((d) => { row(d.state_abb).sqft += d.sqft || 0; });
-    winUnits.filter((u) => inScope(u.state)).forEach((u) => { const r = row(u.state); r.add += u.mw || 0; if (u.group === 'gas') r.gas += u.mw || 0; if (u.group === 'solar') r.solar += u.mw || 0; });
-    retired.filter((u) => inScope(u.state)).forEach((u) => { row(u.state).ret += u.mw || 0; });
-    const all = Object.values(by), tSq = sum(all.map((r) => r.sqft)), tAdd = sum(all.map((r) => r.add)), tGas = sum(all.map((r) => r.gas));
-    const top = all.filter((r) => r.sqft > 0).sort((a, c) => c.sqft - a.sqft).slice(0, 5);
-    if (top.length && tSq > 0 && tAdd > 0) {
-      const lead = top[0];
-      // the county with the most floor area, and what was added within 100 km of it
-      const cty = {};
-      bld.forEach((d) => { const k = `${d.county}|${d.state_abb}`; (cty[k] ??= { k, sqft: 0, lat: 0, lon: 0, n: 0 }); cty[k].sqft += d.sqft || 0; cty[k].lat += d.lat; cty[k].lon += d.lon; cty[k].n++; });
-      const hub = Object.values(cty).sort((a, c) => c.sqft - a.sqft)[0];
-      const hLat = hub.lat / hub.n, hLon = hub.lon / hub.n, rad = (x) => (x * Math.PI) / 180;
-      const km = (la, lo) => { const a = Math.sin(rad(la - hLat) / 2) ** 2 + Math.cos(rad(hLat)) * Math.cos(rad(la)) * Math.sin(rad(lo - hLon) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); };
-      const nearU = winUnits.filter((u) => u.lat != null && km(u.lat, u.lon) <= 100);
-      const nAdd = sum(nearU.map((u) => u.mw || 0)), nSolar = sum(nearU.filter((u) => u.group === 'solar').map((u) => u.mw || 0)), nGas = sum(nearU.filter((u) => u.group === 'gas').map((u) => u.mw || 0));
-      const [cName, cSt] = hub.k.split('|');
-      const pctOf = (v, t) => (100 * v) / t;
-      const maxP = Math.max(...top.flatMap((r) => [pctOf(r.sqft, tSq), pctOf(r.add, tAdd)]));
-      const bar = (p, color, text) => `<div class="geo__bar"><i style="width:${Math.max(1.5, (100 * p) / maxP)}%;background:${color}"></i><b>${esc(text)}</b></div>`;
-      // the state that received the most new capacity, and where the new gas went
-      const nm = (r) => STATE[r.s] || r.s;
-      const builder = all.slice().sort((a, c) => c.add - a.add)[0];
-      const gasTop = all.filter((r) => r.gas > 0).sort((a, c) => c.gas - a.gas).slice(0, 2);
-      const bU = winUnits.filter((u) => u.state === builder.s && u.lat != null);
-      const bLat = sum(bU.map((u) => u.lat)) / (bU.length || 1), bLon = sum(bU.map((u) => u.lon)) / (bU.length || 1);
-      const builderTxt = builder.s !== lead.s
-        ? `<p class="side__sub geo__near"><strong>${esc(nm(builder))} received the most new capacity: ${nf0.format(builder.add)} MW</strong>, ${nf0.format(pctOf(builder.add, tAdd))}% of the total, with ${nf0.format(pctOf(builder.sqft, tSq))}% of the floor area. Of that, ${nf0.format(builder.gas)} MW is gas and ${nf0.format(builder.solar)} MW solar; ${nf0.format(builder.ret)} MW retired there.${gasTop.length === 2 && tGas > 0 ? ` ${esc(nm(gasTop[0]))} and ${esc(nm(gasTop[1]))} together took ${nf0.format(gasTop[0].gas + gasTop[1].gas)} of the ${nf0.format(tGas)} MW of new gas.` : ''}</p>`
-        : '';
+    const G = geoStats({ US, pjmStates, op, winUnits, retired, dcs });
+    if (G) {
+      const p = (v, t) => (100 * v) / t, same = G.builder.s === G.lead.s;
+      const rows = (same ? G.top.slice(0, 2) : [G.lead, G.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, G.tSq), b: p(r.add, G.tAdd), aText: `${nf0.format(p(r.sqft, G.tSq))}%`, bText: `${nf0.format(p(r.add, G.tAdd))}%` }));
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
-      sec.innerHTML = `<h2>What the map shows</h2>
-        <p class="geo__head">${esc(STATE[lead.s] || lead.s)} has ${nf0.format(pctOf(lead.sqft, tSq))}% of the data center floor area and ${nf0.format(pctOf(lead.add, tAdd))}% of the capacity added${tGas > 0 ? `, including ${nf0.format(lead.gas)} MW of the ${nf0.format(tGas)} MW of new gas` : ''}.</p>
-        <div class="geo__key"><span><i style="background:#15323d"></i>Share of data center floor area</span><span><i style="background:#e0903f"></i>Share of capacity added</span></div>
-        <div class="geo__rows">${top.map((r) => `<div class="geo__row"><span class="geo__st">${esc(STATE[r.s] || r.s)}</span><div>${bar(pctOf(r.sqft, tSq), '#15323d', `${nf0.format(pctOf(r.sqft, tSq))}% · ${(r.sqft / 1e6).toFixed(1)}M sq ft`)}${bar(pctOf(r.add, tAdd), '#e0903f', `${nf0.format(pctOf(r.add, tAdd))}% · ${nf0.format(r.add)} MW`)}</div></div>`).join('')}</div>
-        <p class="side__sub geo__near">Within 100 km of ${esc(cName)}, ${esc(cSt)}, which has the most floor area of any county (${(hub.sqft / 1e6).toFixed(1)}M sq ft): <strong>${nf0.format(nAdd)} MW</strong> added, of which ${nf0.format(nSolar)} MW solar and ${nf0.format(nGas)} MW gas.</p>
-        ${builderTxt}
-        <div class="geo__btns"><button class="btn" type="button" id="geoZoom">Zoom to ${esc(cName)}</button>${builderTxt && bU.length ? `<button class="btn" type="button" id="geoZoom2">Zoom to ${esc(nm(builder))}</button>` : ''}</div>
-        <p class="side__sub geo__fine">Whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; it does not follow the slider. Floor area is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. Capacity is EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window. Shares are of the ${US ? 'national' : 'PJM-state'} totals.</p>`;
+      sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : `${esc(stateName(G.lead.s))} has the data centers. ${esc(stateName(G.builder.s))} got the power plants.`}</h2>
+        ${pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' })}
+        <ul class="geo__facts">
+          <li><b>${nf0.format(G.near.gas)} MW</b> of new gas plants within 100 km of ${esc(G.hub.name)}, ${esc(G.hub.st)}, the county with the most data center floor space.</li>
+          ${G.gasTop.length === 2 && G.tGas > 0 ? `<li><b>${nf0.format(G.gasTop[0].gas + G.gasTop[1].gas)} of ${nf0.format(G.tGas)} MW</b> of new gas plants went to ${esc(stateName(G.gasTop[0].s))} and ${esc(stateName(G.gasTop[1].s))}.</li>` : ''}
+        </ul>
+        <div class="geo__btns"><button class="btn" type="button" id="geoZoom">Zoom to ${esc(G.hub.name)}</button>${!same && G.bCenter ? `<button class="btn" type="button" id="geoZoom2">Zoom to ${esc(stateName(G.builder.s))}</button>` : ''}</div>
+        <details class="fineprint"><summary>About these numbers</summary>
+          <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
+          <p>Floor space is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. New power plants are EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window.</p></details>`;
       const side = root.querySelector('.mapview__side');
-      side.insertBefore(sec, side.children[1]);
-      sec.querySelector('#geoZoom').addEventListener('click', () => map.flyTo({ center: [hLon, hLat], zoom: 8.2, essential: false }));
-      sec.querySelector('#geoZoom2')?.addEventListener('click', () => map.flyTo({ center: [bLon, bLat], zoom: US ? 5.2 : 6.4, essential: false }));
+      side.insertBefore(sec, side.children[0]);
+      sec.querySelector('#geoZoom').addEventListener('click', () => map.flyTo({ center: [G.hub.lon, G.hub.lat], zoom: 8.2, essential: false }));
+      sec.querySelector('#geoZoom2')?.addEventListener('click', () => map.flyTo({ center: [G.bCenter.lon, G.bCenter.lat], zoom: US ? 5.2 : 6.4, essential: false }));
     }
   }
 
