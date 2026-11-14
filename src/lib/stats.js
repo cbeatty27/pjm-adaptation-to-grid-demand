@@ -83,5 +83,7 @@ export function breakScan(months, values) {
   }
   if (!out.length) return null;
   const best = out.reduce((a, c) => (c.sse < a.sse ? c : a));
-  return { best, list: out };
+  // months whose fit is within 5% of the best squared error: how tightly the data pin the date down
+  const near = out.filter((x) => x.sse <= best.sse * 1.05).map((x) => x.m);
+  return { best, list: out, nearFrom: near[0], nearTo: near[near.length - 1], releaseNear: near.includes(RELEASE) };
 }

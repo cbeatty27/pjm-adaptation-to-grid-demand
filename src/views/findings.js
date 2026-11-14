@@ -48,7 +48,7 @@ export async function mount(root, data) {
     const items = [];
     if (f) {
       const scan = breakScan(mo.months, complete(mo.avg_mw, mo.coverage));
-      const when = scan && scan.best.m !== RELEASE ? ` The change fits best at ${ymLabel(scan.best.m)}, not at the release itself.` : '';
+      const when = scan && scan.best.m !== RELEASE ? ` The change fits best at ${ymLabel(scan.best.m)}; any month from ${ymLabel(scan.nearFrom)} to ${ymLabel(scan.nearTo)} fits nearly as well.` : '';
       items.push(f.significant && f.dSlope > 0
         ? [`Demand growth sped up, from ${up((100 * f.pre) / b.avg_mw)} to ${up((100 * f.post) / b.avg_mw)} a year.`, `Average demand is ${pct(dem(b.avg_mw, l.avg_mw))} above the 12 months before the release, and the change in trend is statistically distinguishable.${when}`]
         : [`Demand is ${pct(dem(b.avg_mw, l.avg_mw))} above the 12 months before the release, but the trend has not changed by a distinguishable amount.`, `It was changing ${up((100 * f.pre) / b.avg_mw)} a year before and ${up((100 * f.post) / b.avg_mw)} a year after.`]);
