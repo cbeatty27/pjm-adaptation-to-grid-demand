@@ -172,3 +172,42 @@ export function capacityLinkFigure(host, { meta, cg, demand, scope }) {
     foot: `Sources: capacity is net summer capacity in service for the whole month from EIA's generator inventory (EIA-860M operating units and its Retired tab back to 2015); output is ${esc(cg.method.generation)}. Storage is not included because it moves energy rather than producing it. ${scope === 'PJM' ? 'PJM solar output per megawatt comes out lower than the national figure; the inventory and the EIA-930 feed are separate reports and may not cover exactly the same plants, so treat the PJM solar level with caution and read the change. ' : ''}"Output per MW added" is shown only where capacity grew by at least 10%.`,
   });
 }
+
+// ---- the floor, the average and the peak ----------------------------------------------------------------------
+export function loadShapeFigure(host, { demand, scope, series }) {
+  const mo = demand.monthly, months = mo.months;
+  const S = [
+    { k: 'low', label: 'Lowest hour of each month', v: complete(mo.min_mw, mo.coverage), color: '#15323d' },
+    { k: 'avg', label: 'Average of all hours', v: complete(mo.avg_mw, mo.coverage), color: TIME.warm },
+    { k: 'high', label: 'Highest hour of each month', v: complete(mo.peak_mw, mo.coverage), color: '#9fb3bd' },
+  ].map((s) => ({ ...s, f: trendFit(months, s.v), roll: rolling12(months, s.v) }));
+  const [low, avg, high] = S;
+  if (!low.f || !avg.f) return null;
+  const ri = months.indexOf('2022-10');
+  const rel = (s) => { const b = s.roll[ri]; return s.roll.map((x) => (x == null || b == null ? null : x - b)); };
+  const fitRel = (s) => { const r = rolling12(months, months.map((m) => s.f.fitAt(m))); const b = s.roll[ri]; return r.map((x) => (x == null || b == null ? null : x - b)); };
+  const share = (100 * low.f.post) / avg.f.post;
+  const ds = [];
+  S.forEach((s) => {
+    ds.push({ label: s.label, data: rel(s), borderColor: s.color, borderWidth: 2.3, pointRadius: 0, pointHoverRadius: 4, tension: 0 });
+    if (s.f) ds.push({ label: `${s.label} trend`, data: fitRel(s), borderColor: s.color, borderWidth: 1.2, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0, tension: 0 });
+  });
+  const o = lineOpts(months, 'MW above the 12 months before the release');
+  o.plugins.tooltip.filter = (it) => !String(it.dataset.label).endsWith('trend');
+  o.plugins.tooltip.callbacks.label = (c) => `${c.dataset.label}: ${sg0(c.parsed.y)} MW`;
+  const row = (s) => [s.label, `${sg0(s.f.pre)} ± ${nf0.format(1.96 * s.f.sePre)}`, `${sg0(s.f.post)} ± ${nf0.format(1.96 * s.f.sePost)}`, `${sg0(s.f.dSlope)} ± ${nf0.format(1.96 * s.f.seD)}`, pTxt(s.f.p), s.f.significant ? 'Yes' : 'No'];
+  const floorUp = low.f.significant && low.f.post > 0;
+  return figure(host, {
+    title: floorUp ? `${scope}: demand in the quietest hour is rising ${nf0.format(low.f.post)} MW a year, ${nf0.format(share)}% as fast as average demand` : `${scope}: the quietest hour, the average and the busiest hour`,
+    callout: `<b>Why the quietest hour matters.</b> Heating and cooling lift demand on hot and cold days and leave the quietest hour of a month largely alone. A load that runs at the same level every hour lifts the quietest hour by as much as it lifts the average. Before the release the lowest hour of each month was changing by ${sg0(low.f.pre)} MW a year${low.f.preSignificant ? '' : ' (not distinguishable from no trend)'}; after it, by ${sg0(low.f.post)} MW a year, against ${sg0(avg.f.post)} MW a year for the average.`
+      + (high.f ? ` The highest hour is rising faster still, ${sg0(high.f.post)} MW a year, so the growth is not only round-the-clock load.` : '')
+      + ' This describes the shape of the added demand, not who is using it.',
+    views: [
+      { id: 'shape', label: 'Floor, average, peak', height: 400, legend: S.map((s) => `<span><i class="line" style="background:${s.color}"></i>${esc(s.label)}</span>`).join('') + '<span>Dashed: fitted trend</span>',
+        note: 'Each line is a 12-month average, shown as megawatts above its own level in the 12 months before the release, so the three can be compared on one scale. Lines that rise together mean demand is being added in every hour.',
+        draw: (cv) => new Chart(cv, { type: 'line', data: { labels: months, datasets: ds }, options: o, plugins: [releaseMarker(months, RELEASE, 'bottom')] }) },
+      { id: 'table', label: 'The numbers', note: 'Slopes in MW a year with 95% intervals, fitted the same way as the demand trend above.', table: table(['Series', 'Before (MW/yr)', 'After (MW/yr)', 'Change (MW/yr)', 'Test', 'Distinguishable'], S.filter((s) => s.f).map(row)) },
+    ],
+    foot: `Source: EIA Form EIA-930 hourly demand, ${esc(series)}; the lowest and highest hour are taken within each month, from months with at least 95% of hours. ${METHOD} The lowest hour is less sensitive to weather than the average, but not immune to it.`,
+  });
+}
