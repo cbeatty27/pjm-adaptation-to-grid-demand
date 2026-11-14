@@ -2,7 +2,7 @@
 import { Chart, GRID, INK, figure, table, yearTicks, releaseMarker, barEndLabels, sgn } from './figs.js';
 import { FUEL_COLOR, TIME } from './fuels.js';
 import { esc, nf0, nf1, ymLabel } from './format.js';
-import { trendFit, rolling12, RELEASE } from './stats.js';
+import { trendFit, rolling12, breakScan, RELEASE } from './stats.js';
 
 const sg0 = (v) => `${v >= 0 ? '+' : '−'}${nf0.format(Math.abs(v))}`;
 const sgp = (v, d = 1) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(d)}%`;
@@ -46,15 +46,20 @@ export function demandTrendFigure(host, { demand, scope, series }) {
   const base = demand.comparison.baseline.avg_mw, l = demand.comparison.latest, b = demand.comparison.baseline;
   const { ds } = trendDatasets(months, vals, f, TIME.cool);
   const peakFit = trendFit(months, complete(mo.peak_mw, mo.coverage));
+  const lowFit = trendFit(months, complete(mo.min_mw, mo.coverage));
+  const no2020 = trendFit(months, vals.map((v, i) => (months[i] >= '2020-03' && months[i] <= '2021-02' ? null : v)));
+  const scan = breakScan(months, vals);
+  const pb = (x) => `${sgp((100 * x.pre) / base)} to ${sgp((100 * x.post) / base)} a year, ${x.significant ? 'distinguishable' : 'not distinguishable'}`;
+  const checks = f ? `<b>Checks.</b> ${no2020 ? `Leaving out March 2020 to February 2021: ${pb(no2020)}. ` : ''}${lowFit ? `The lowest hour of each month, which is the least sensitive to weather: ${sg0(lowFit.pre)} MW a year before, ${sg0(lowFit.post)} after, ${lowFit.significant ? 'distinguishable' : 'not distinguishable'}. ` : ''}${scan ? `If the data choose the month where the slope changes, the best fit is ${ymLabel(scan.best.m)}${scan.best.m === RELEASE ? '' : `, not November 2022`}.` : ''}` : '';
   const title = f
     ? (f.significant && f.dSlope > 0 ? `${scope} demand growth sped up after the release: ${sgp((100 * f.pre) / base)} a year before, ${sgp((100 * f.post) / base)} a year after`
       : f.significant ? `${scope} demand growth slowed after the release: ${sgp((100 * f.pre) / base)} a year before, ${sgp((100 * f.post) / base)} a year after`
         : `${scope} demand: the trend after the release is not distinguishable from the trend before it`)
     : `${scope} demand`;
-  const rows = [['Average hourly demand', f], ['Highest hour of each month', peakFit]].filter((r) => r[1]).map(([k, x]) => [k, `${sg0(x.pre)} ± ${nf0.format(1.96 * x.sePre)}`, `${sg0(x.post)} ± ${nf0.format(1.96 * x.sePost)}`, `${sg0(x.dSlope)} ± ${nf0.format(1.96 * x.seD)}`, pTxt(x.p), x.significant ? 'Yes' : 'No', `${x.n}`]);
+  const rows = [['Average hourly demand', f], ['Average, leaving out Mar 2020 to Feb 2021', no2020], ['Lowest hour of each month', lowFit], ['Highest hour of each month', peakFit], ...(scan && scan.best.m !== RELEASE ? [[`Average, slope change placed at ${ymLabel(scan.best.m)} (best fit)`, scan.best.f]] : [])].filter((r) => r[1]).map(([k, x]) => [k, `${sg0(x.pre)} ± ${nf0.format(1.96 * x.sePre)}`, `${sg0(x.post)} ± ${nf0.format(1.96 * x.sePost)}`, `${sg0(x.dSlope)} ± ${nf0.format(1.96 * x.seD)}`, pTxt(x.p), x.significant ? 'Yes' : 'No', `${x.n}`]);
   return figure(host, {
     title,
-    callout: `<b>What the trend lines say.</b> ${trendSentence(f, base, 'average demand')} Average demand was ${nf0.format(b.avg_mw)} MW in the 12 months before the release and ${nf0.format(l.avg_mw)} MW in the latest 12, ${sgp((100 * (l.avg_mw - b.avg_mw)) / b.avg_mw)}.`,
+    callout: `<b>What the trend lines say.</b> ${trendSentence(f, base, 'average demand')} Average demand was ${nf0.format(b.avg_mw)} MW in the 12 months before the release and ${nf0.format(l.avg_mw)} MW in the latest 12, ${sgp((100 * (l.avg_mw - b.avg_mw)) / b.avg_mw)}. ${checks}`,
     views: [
       { id: 'trend', label: 'Trend', legend: trendLegend(TIME.cool, f), note: 'Average hourly demand over the 12 months ending in each month, which removes the seasons. The dashed line is the fitted trend; the dotted line is the earlier trend carried forward, so the gap between it and the observed line is how far demand is from where the earlier trend pointed.',
         draw: (cv) => new Chart(cv, { type: 'line', data: { labels: months, datasets: ds }, options: lineOpts(months, 'Average hourly demand (MW)'), plugins: [releaseMarker(months, RELEASE, 'bottom')] }) },
@@ -90,16 +95,29 @@ export function generationTrendFigure(host, { meta, ex, scope }) {
     fuelDs.push({ label: label[x.k], data: rolling12(M, x.v), borderColor: FUEL_COLOR[x.k], borderWidth: 2.2, pointRadius: 0, pointHoverRadius: 4, tension: 0 });
     if (x.f) fuelDs.push({ label: `${label[x.k]} trend`, data: rolling12(M, M.map((m) => x.f.fitAt(m))), borderColor: FUEL_COLOR[x.k], borderWidth: 1.2, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0, tension: 0 });
   });
+  const D = complete(mm.demand.avg_mw, mm.demand.coverage).slice(i0);
+  const rD = rolling12(M, D), rT = rolling12(M, T);
+  const net = rD.map((v, i) => (v != null && rT[i] != null ? rT[i] - v : null));
+  const at = (m) => { const i = M.indexOf(m); return i >= 0 ? net[i] : null; };
+  const lastI = net.reduce((a, v, i) => (v != null ? i : a), -1);
+  const n0 = at('2022-10'), n1 = lastI >= 0 ? net[lastI] : null;
+  const word = (v) => (v >= 0 ? `generated ${nf0.format(v)} MW more than it used` : `used ${nf0.format(-v)} MW more than it generated`);
+  const gap = n0 != null && n1 != null ? ` <b>Demand against generation.</b> In the 12 months before the release ${scope === 'PJM' ? 'PJM' : 'the Lower 48'} ${word(n0)}, on average; in the latest 12 it ${word(n1)}. The difference is power exchanged with neighbouring grids${n0 > 0 && n1 < n0 && n1 >= 0 ? ', so part of the growth in demand was met by sending less power out rather than by generating more' : ''}.` : '';
   const fo = lineOpts(M, 'Average net generation (MW)');
   fo.plugins.tooltip.filter = (it) => !String(it.dataset.label).endsWith('trend');
   fo.plugins.tooltip.itemSort = (a, c) => c.parsed.y - a.parsed.y;
   return figure(host, {
     title: `${scope} generation: ${fT ? (fT.significant ? `the trend changed after the release, ${sg0(fT.pre)} MW a year before and ${sg0(fT.post)} MW a year after` : 'no distinguishable change in the total trend after the release') : 'trend by fuel'}`,
     callout: `<b>What the trend lines say.</b> ${trendSentence(fT, baseT || 1, 'average net generation')}`
-      + (up.length || down.length ? ` By fuel, the slope rose by a distinguishable amount for ${up.length ? esc(up.join(', ')) : 'none'} and fell for ${down.length ? esc(down.join(', ')) : 'none'}; the rest show no distinguishable change.` : ''),
+      + (up.length || down.length ? ` By fuel, the slope rose by a distinguishable amount for ${up.length ? esc(up.join(', ')) : 'none'} and fell for ${down.length ? esc(down.join(', ')) : 'none'}; the rest show no distinguishable change.` : '') + gap,
     views: [
       { id: 'total', label: 'All fuels', legend: trendLegend('#4f7f95', fT), note: 'Average net generation from all fuels over the 12 months ending in each month, with the fitted trend (dashed) and the earlier trend carried forward (dotted).',
         draw: (cv) => new Chart(cv, { type: 'line', data: { labels: M, datasets: ds }, options: lineOpts(M, 'Average net generation (MW)'), plugins: [releaseMarker(M, RELEASE, 'bottom')] }) },
+      { id: 'gap', label: 'Demand vs generation', legend: `<span><i class="line" style="background:${TIME.warm}"></i>Demand</span><span><i class="line" style="background:#4f7f95"></i>Net generation, all fuels</span>`, note: 'Average demand and average net generation over the 12 months ending in each month. Where generation is above demand the area sent power to its neighbours on balance; where it is below, it took power in. EIA-930 reports the two series separately, so the gap is their difference, not a reported interchange figure.',
+        draw: (cv) => new Chart(cv, { type: 'line', data: { labels: M, datasets: [
+          { label: 'Net generation', data: rT, borderColor: '#4f7f95', backgroundColor: 'rgba(79,127,149,.14)', fill: '+1', borderWidth: 2.2, pointRadius: 0, pointHoverRadius: 4, tension: 0 },
+          { label: 'Demand', data: rD, borderColor: TIME.warm, borderWidth: 2.2, pointRadius: 0, pointHoverRadius: 4, tension: 0 }] },
+          options: (() => { const o = lineOpts(M, 'Average over 12 months (MW)'); o.plugins.tooltip.callbacks.afterBody = (it) => { const v = net[it[0].dataIndex]; return v == null ? '' : `Generation minus demand: ${v >= 0 ? '+' : '−'}${nf0.format(Math.abs(v))} MW`; }; return o; })(), plugins: [releaseMarker(M, RELEASE, 'bottom')] }) },
       { id: 'fuel', label: 'By fuel', legend: fits.map((x) => `<span><i style="background:${FUEL_COLOR[x.k]}"></i>${esc(label[x.k])}</span>`).join('') + '<span>Dashed: fitted trend</span>', note: 'The same 12-month average for each fuel, each with its own fitted trend.', height: 420,
         draw: (cv) => new Chart(cv, { type: 'line', data: { labels: M, datasets: fuelDs }, options: fo, plugins: [releaseMarker(M, RELEASE, 'bottom')] }) },
       { id: 'table', label: 'The numbers', note: 'Slopes in MW of average output a year with 95% intervals; "After, % a year" is relative to the fuel\'s average in the 12 months before the release.', table: table(['Fuel', 'Before (MW/yr)', 'After (MW/yr)', 'Change (MW/yr)', 'After, % a year', 'Test', 'Distinguishable'], rows) },
@@ -139,15 +157,15 @@ export function capacityLinkFigure(host, { meta, cg, demand, scope }) {
     plugins: stacked ? [] : [barEndLabels((i, v) => fmt(v))],
   });
   return figure(host, {
-    title: `${scope}: what was built and what it delivered, by fuel`,
+    title: useUp && useUp.twhUse > 0.5 * rows.reduce((a, r) => a + r.twh, 0) ? `${scope}: the extra energy came mostly from ${label[useUp.g].toLowerCase()} plants running more, not from new capacity` : `${scope}: what was built and what it delivered, by fuel`,
     callout,
     views: [
-      { id: 'link', label: 'Built vs delivered', height: h, legend: `<span><i style="background:#9fb3bd"></i>Change in capacity in service (GW)</span><span><i style="background:${INK}"></i>Change in average output (GW)</span>`,
-        note: `For each fuel, the change in capacity in service (additions minus retirements) next to the change in its average output, both in gigawatts, between ${ymLabel(base.from)}–${ymLabel(base.to)} and ${ymLabel(latest.from)}–${ymLabel(latest.to)}. A gigawatt of capacity that ran every hour would add a gigawatt of average output.`,
-        draw: hb([{ label: 'Change in capacity', data: rows.map((r) => r.dCap / 1000), backgroundColor: '#9fb3bd', borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }, { label: 'Change in average output', data: rows.map((r) => r.dGen / 1000), backgroundColor: INK, borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }], 'Gigawatts', (v) => `${v >= 0 ? '+' : '−'}${nf1.format(Math.abs(v))} GW`) },
       { id: 'split', label: 'New capacity or running more', height: h, legend: `<span><i style="background:#9fb3bd"></i>From the change in capacity, at the earlier capacity factor</span><span><i style="background:${TIME.warm}"></i>From the fleet running more or less</span>`,
         note: 'The change in each fuel\'s yearly energy split in two: the change in capacity multiplied by the capacity factor before the release, and the remainder, which is the whole fleet producing more or less per megawatt. It is arithmetic on fleet totals and does not say which units ran.',
         draw: hb([{ label: 'From change in capacity', data: rows.map((r) => r.twhCap), backgroundColor: '#9fb3bd', borderRadius: 3 }, { label: 'From running more or less', data: rows.map((r) => r.twhUse), backgroundColor: TIME.warm, borderRadius: 3 }], 'TWh a year', (v) => `${sgn(v)} TWh`, true) },
+      { id: 'link', label: 'Built vs delivered', height: h, legend: `<span><i style="background:#9fb3bd"></i>Change in capacity in service (GW)</span><span><i style="background:${INK}"></i>Change in average output (GW)</span>`,
+        note: `For each fuel, the change in capacity in service (additions minus retirements) next to the change in its average output, both in gigawatts, between ${ymLabel(base.from)}–${ymLabel(base.to)} and ${ymLabel(latest.from)}–${ymLabel(latest.to)}. A gigawatt of capacity that ran every hour would add a gigawatt of average output.`,
+        draw: hb([{ label: 'Change in capacity', data: rows.map((r) => r.dCap / 1000), backgroundColor: '#9fb3bd', borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }, { label: 'Change in average output', data: rows.map((r) => r.dGen / 1000), backgroundColor: INK, borderRadius: 4, barPercentage: 0.85, categoryPercentage: 0.7 }], 'Gigawatts', (v) => `${v >= 0 ? '+' : '−'}${nf1.format(Math.abs(v))} GW`) },
       { id: 'table', label: 'The numbers', note: 'Capacity is the average in service over each 12-month window; output is average generation.', table: table(['Fuel', 'Change in capacity', 'Change in average output', 'Output per MW added', 'Capacity factor before', 'Capacity factor latest', 'Energy from capacity change', 'Energy from running more/less'],
         rows.map((r) => [label[r.g], `${sg0(r.dCap)} MW`, `${sg0(r.dGen)} MW`, r.dCap > 0 && r.dCap >= 0.1 * base.groups[r.g].cap_mw ? `${nf0.format((1000 * r.dGen) / r.dCap)} kW` : 'n/a', `${(100 * r.cf0).toFixed(1)}%`, `${(100 * r.cf1).toFixed(1)}%`, `${sgn(r.twhCap)} TWh`, `${sgn(r.twhUse)} TWh`])) },
     ],

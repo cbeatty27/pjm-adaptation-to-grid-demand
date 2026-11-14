@@ -23,8 +23,8 @@ function solve(A, b) {           // Gaussian elimination with partial pivoting; 
 const normCdf = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp((-z * z) / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
 
 // months: ['YYYY-MM'], values: numbers or null. Returns null when there is too little data on either side.
-export function trendFit(months, values, { lag = 12 } = {}) {
-  const t0 = ymNum(RELEASE);
+export function trendFit(months, values, { lag = 12, brk = RELEASE } = {}) {
+  const t0 = ymNum(brk);
   const rows = [];
   months.forEach((m, i) => { if (values[i] != null && isFinite(values[i])) rows.push({ m, y: values[i], t: (ymNum(m) - t0) / 12, s: Number(m.slice(5, 7)) - 1 }); });
   const nPre = rows.filter((r) => r.t <= 0).length, nPost = rows.length - nPre;
@@ -55,9 +55,10 @@ export function trendFit(months, values, { lag = 12 } = {}) {
   const sePre = se(V[12][12]), seD = se(V[13][13]), sePost = se(V[12][12] + V[13][13] + 2 * V[12][13]);
   const z = dSlope / seD, p = 2 * (1 - normCdf(Math.abs(z)));
   const ybar = rows.reduce((s, r) => s + r.y, 0) / n;
-  const r2 = 1 - e.reduce((s, v) => s + v * v, 0) / rows.reduce((s, r) => s + (r.y - ybar) ** 2, 0);
+  const sse = e.reduce((s, v) => s + v * v, 0);
+  const r2 = 1 - sse / rows.reduce((s, r) => s + (r.y - ybar) ** 2, 0);
   const fitAt = (m, counterfactual = false) => { const t = (ymNum(m) - t0) / 12; return season[Number(m.slice(5, 7)) - 1] + pre * t + (counterfactual ? 0 : dSlope * Math.max(0, t)); };
-  return { n, nPre, nPost, level, pre, post, dSlope, sePre, sePost, seD, z, p, r2, lag, significant: p < 0.05, postSignificant: Math.abs(post / sePost) > 1.96, preSignificant: Math.abs(pre / sePre) > 1.96,
+  return { n, nPre, nPost, sse, brk, level, pre, post, dSlope, sePre, sePost, seD, z, p, r2, lag, significant: p < 0.05, postSignificant: Math.abs(post / sePost) > 1.96, preSignificant: Math.abs(pre / sePre) > 1.96,
     first: rows[0].m, last: rows[n - 1].m, fitAt };
 }
 
@@ -70,4 +71,17 @@ export function rolling12(months, values) {
     for (let k = i - 11; k <= i; k++) { if (values[k] == null) return null; s += values[k] * h[k]; w += h[k]; }
     return s / w;
   });
+}
+
+// Which month, used as the point where the slope changes, fits the series best (smallest squared error)?
+// Candidates leave at least 24 months on each side. Returns { best, atRelease, months: [{ m, sse }] }.
+export function breakScan(months, values) {
+  const out = [];
+  for (const m of months) {
+    const f = trendFit(months, values, { brk: m });
+    if (f) out.push({ m, sse: f.sse, f });
+  }
+  if (!out.length) return null;
+  const best = out.reduce((a, c) => (c.sse < a.sse ? c : a));
+  return { best, list: out };
 }

@@ -46,6 +46,9 @@ export async function mount(root, data) {
       ...(f ? [['Demand trend, before to after', `${pct((100 * f.pre) / b.avg_mw)} → ${pct((100 * f.post) / b.avg_mw)}`, `a year; change ${f.significant ? 'is' : 'is not'} statistically distinguishable`, TIME.cool]] : []),
       ...(st ? [['Capacity in service, change', `${sum('d_cap_mw') >= 0 ? '+' : '−'}${nf1.format(Math.abs(sum('d_cap_mw')) / 1000)} GW`, 'additions minus retirements, six fuels', '#9fb3bd'],
         ['Average output, change', `${sum('d_gen_mw') >= 0 ? '+' : '−'}${nf1.format(Math.abs(sum('d_gen_mw')) / 1000)} GW`, 'what those fuels delivered, on average', '#15323d']] : []),
+      ...(() => { if (!st || !cg.baseline) return []; const H = 8760 / 1e6;
+        const r = Object.entries(st).map(([g, v]) => { const cf0 = cg.baseline.groups[g]?.cf; return cf0 == null ? null : { g, use: (v.d_gen_mw - v.d_cap_mw * cf0) * H, cap: v.d_cap_mw * cf0 * H }; }).filter(Boolean).sort((a, c) => c.use - a.use)[0];
+        return r && r.use > 0 ? [[`${gl[r.g]}: existing fleet running more`, `+${nf1.format(r.use)} TWh`, `a year, against ${r.cap >= 0 ? '+' : '−'}${nf1.format(Math.abs(r.cap))} TWh from its change in capacity`, '#e87e42']] : []; })(),
       ...(grown ? [[`Each MW of ${gl[grown[0]].toLowerCase()} added`, `${nf0.format((1000 * grown[1].d_gen_mw) / grown[1].d_cap_mw)} kW`, 'of average output', '#d9ae36']] : []),
     ].map(([k, v, s, c]) => `<div style="--ledger:${c}"><dt>${esc(k)}</dt><dd>${esc(v)}<small>${esc(s)}</small></dd></div>`).join('');
     const push = (x) => x && parts.push(x);
