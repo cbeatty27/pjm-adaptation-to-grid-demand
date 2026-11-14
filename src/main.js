@@ -21,7 +21,7 @@ function setTab(name) {
 
 async function render() {
   const { meta } = await loadAll().catch(() => ({ meta: null }));
-  const fallback = meta?.has_us ? 'us' : 'map';
+  const fallback = meta?.has_us ? 'usmap' : 'map';
   const asked = (location.hash.replace(/^#\//, '') || fallback).split('?')[0];
   const key = routes[asked] ? asked : fallback;
   setTab(key);
