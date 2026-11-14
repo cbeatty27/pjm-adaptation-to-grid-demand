@@ -54,15 +54,15 @@ export async function mount(root, data) {
       const roll = rolling12(mo.months, valsD), cf = rolling12(mo.months, mo.months.map((m) => f.fitAt(m, true)));
       const i0 = roll.findIndex((v) => v != null), ri = mo.months.indexOf(RELEASE) - i0;
       const r2 = roll.slice(i0), c2 = cf.slice(i0).map((v, i) => (i >= ri ? v : null));
-      const g = miniLine([{ vals: r2, color: C.cool, colorAfter: C.warm }, { vals: c2, color: '#8d9aa2', dash: '2 4', width: 1.6 }], { split: ri, splitText: 'ChatGPT released', startText: `${nf0.format(r2[0])} MW`, endText: `${nf0.format(l.avg_mw)} MW`, aria: 'Average demand over 12 months, flat before the release and rising after; dotted line is the earlier trend continued' });
+      const g = miniLine([{ vals: r2, color: C.cool, colorAfter: C.warm }, { vals: c2, color: '#8d9aa2', dash: '2 4', width: 1.6 }], { split: ri, splitText: 'ChatGPT released', years: [mo.months[i0].slice(0, 4), mo.months[mo.months.length - 1].slice(0, 4)], startText: `${nf0.format(r2[0])} MW`, endText: `${nf0.format(l.avg_mw)} MW`, aria: 'Average demand over 12 months, flat before the release and rising after; dotted line is the earlier trend continued' });
       const when = scan && scan.best.m !== RELEASE ? ` The turn fits best at ${ymLabel(scan.best.m)}; any month from ${ymLabel(scan.nearFrom)} to ${ymLabel(scan.nearTo)} fits nearly as well.` : '';
       items.push(f.significant && f.dSlope > 0
-        ? { h: `Demand growth sped up, from ${up((100 * f.pre) / b.avg_mw)} to ${up((100 * f.post) / b.avg_mw)} a year.`, g, d: `12-month average demand; the dotted line is where the earlier trend pointed.${when}` }
-        : { h: `Demand is ${pct(dem(b.avg_mw, l.avg_mw))} higher, but its trend has not changed by a distinguishable amount.`, g, d: `It was changing ${up((100 * f.pre) / b.avg_mw)} a year before and ${up((100 * f.post) / b.avg_mw)} a year after.` });
+        ? { to: 'demand', h: `Demand growth sped up, from ${up((100 * f.pre) / b.avg_mw)} to ${up((100 * f.post) / b.avg_mw)} a year.`, g, d: `12-month average demand; the dotted line is where the earlier trend pointed.${when}` }
+        : { to: 'demand', h: `Demand is ${pct(dem(b.avg_mw, l.avg_mw))} higher, but its trend has not changed by a distinguishable amount.`, g, d: `It was changing ${up((100 * f.pre) / b.avg_mw)} a year before and ${up((100 * f.post) / b.avg_mw)} a year after.` });
     }
     if (f && fLow && fLow.significant && fLow.post > 0) {
       const fHigh = trendFit(mo.months, complete(mo.peak_mw, mo.coverage));
-      items.push({ h: `The growth is round-the-clock: the quietest hour is rising ${nf0.format((100 * fLow.post) / f.post)}% as fast as the average.`,
+      items.push({ to: 'shape', h: `The growth is round-the-clock: the quietest hour is rising ${nf0.format((100 * fLow.post) / f.post)}% as fast as the average.`,
         g: miniBars([{ label: 'Quietest hour', value: fLow.post, text: `+${nf0.format(fLow.post)} MW/yr`, color: C.ink }, { label: 'Average', value: f.post, text: `+${nf0.format(f.post)} MW/yr`, color: C.warm }, ...(fHigh ? [{ label: 'Busiest hour', value: fHigh.post, text: `+${nf0.format(fHigh.post)} MW/yr`, color: C.grey }] : [])]),
         d: 'Growth per year since the release, by hour of the month. Weather lifts the busiest hours; only load that runs every hour lifts the quietest.' });
     }
@@ -71,15 +71,15 @@ export async function mount(root, data) {
       const tz = zl.reduce((a, r) => a + r.d, 0);
       if (zl.length && tz > 0) {
         const top = zl.slice(0, 4), rest = zl.slice(4).reduce((a, r) => a + r.d, 0);
-        items.push({ h: `${nf0.format((100 * zl[0].d) / tz)}% of the growth is in one zone: ${zl[0].name}.`,
-          g: miniBars([...top.map((r, i) => ({ label: r.name.length > 17 ? r.z : r.name, value: r.d, text: `+${nf0.format(r.d)} MW`, color: i === 0 ? C.warm : C.grey })), { label: `Other ${zl.length - 4} zones`, value: rest, text: `${rest >= 0 ? '+' : '−'}${nf0.format(Math.abs(rest))} MW`, color: C.grey }], { labelW: 132, rowH: 28, barH: 15 }),
+        items.push({ to: 'zones', h: `${nf0.format((100 * zl[0].d) / tz)}% of the growth is in one zone: ${zl[0].name}.`,
+          g: miniBars([...top.map((r, i) => ({ label: r.name.length > 17 ? r.z : r.name, value: r.d, text: `+${nf0.format(r.d)} MW`, color: i === 0 ? C.warm : C.grey })), { label: `Other ${zl.length - 4} zones`, value: rest, text: `${rest >= 0 ? '+' : '−'}${nf0.format(Math.abs(rest))} MW`, color: C.grey }], { rowH: 32, barH: 17 }),
           d: 'Change in average demand by PJM zone, latest 12 months against the 12 before the release.' });
       }
     }
     if (st && cg.baseline) {
       if (grown) {
         const nm = gl[grown[0]].toLowerCase();
-        items.push({ h: `${gwS(grown[1].d_cap_mw)} of ${nm} was added. It delivers ${gwS(grown[1].d_gen_mw)} on average.`,
+        items.push({ to: 'link', h: `${gwS(grown[1].d_cap_mw)} of ${nm} was added. It delivers ${gwS(grown[1].d_gen_mw)} on average.`,
           g: miniBars([{ label: 'Capacity added', value: grown[1].d_cap_mw, text: gwS(grown[1].d_cap_mw), color: C.grey }, { label: 'Average output', value: grown[1].d_gen_mw, text: gwS(grown[1].d_gen_mw), color: C.solar }, ...(!us ? [{ label: 'Demand growth', value: l.avg_mw - b.avg_mw, text: gwS(l.avg_mw - b.avg_mw), color: C.warm }] : [])]),
           d: `Each megawatt of ${nm} added went with ${nf0.format((1000 * grown[1].d_gen_mw) / grown[1].d_cap_mw)} kW of average output.` });
       }
@@ -87,7 +87,7 @@ export async function mount(root, data) {
       const totTwh = Object.values(st).reduce((a, v) => a + v.d_twh, 0);
       if (r && r.use > 0) {
         const nm = gl[r.g].toLowerCase();
-        items.push({ h: r.use > 0.5 * totTwh ? `Most of the extra energy came from existing ${nm} plants running more, not from new plants.` : `Existing ${nm} plants running more added ${nf0.format(r.use)} TWh a year.`,
+        items.push({ to: 'link', h: r.use > 0.5 * totTwh ? `Most of the extra energy came from existing ${nm} plants running more, not from new plants.` : `Existing ${nm} plants running more added ${nf0.format(r.use)} TWh a year.`,
           g: miniBars([{ label: 'Running more', value: r.use, text: `+${nf1.format(r.use)} TWh/yr`, color: C.gas }, { label: 'New capacity', value: r.cap, text: `${r.cap >= 0 ? '+' : '−'}${nf1.format(Math.abs(r.cap))} TWh/yr`, color: C.grey }]),
           d: `Where the rise in ${nm} output came from. The fleet's capacity factor went from ${(100 * r.cf0).toFixed(1)}% to ${(100 * r.cf1).toFixed(1)}%.` });
       }
@@ -100,24 +100,25 @@ export async function mount(root, data) {
       const i0 = mm.months.indexOf('2022-10'); let i1 = -1; net.forEach((v, i) => { if (v != null) i1 = i; });
       if (i0 >= 0 && i1 > i0 && net[i0] != null) {
         const n0 = net[i0], n1 = net[i1];
-        if (n0 > 0 && n1 >= 0 && n1 < n0) items.push({ h: `PJM sends less power to its neighbours: its surplus fell from ${nf0.format(n0)} MW to ${nf0.format(n1)} MW.`,
-          g: miniBars([{ label: 'Before the release', value: n0, text: `${nf0.format(n0)} MW`, color: C.cool }, { label: 'Latest 12 months', value: n1, text: `${nf0.format(n1)} MW`, color: C.warm }], { labelW: 132 }),
+        if (n0 > 0 && n1 >= 0 && n1 < n0) items.push({ to: 'gen', h: `PJM sends less power to its neighbours: its surplus fell from ${nf0.format(n0)} MW to ${nf0.format(n1)} MW.`,
+          g: miniBars([{ label: 'Before the release', value: n0, text: `${nf0.format(n0)} MW`, color: C.cool }, { label: 'Latest 12 months', value: n1, text: `${nf0.format(n1)} MW`, color: C.warm }], {}),
           d: 'Generation minus demand, on average. Part of the growth in demand was met by keeping power that used to leave.' });
       }
     }
     root.querySelector('#ledger').dataset.n = String(items.length);
-    root.querySelector('#ledger').innerHTML = items.map((it, i) => `<li><span class="concl__n">${i + 1}</span><strong>${esc(it.h)}</strong>${it.g}<p>${esc(it.d)}</p></li>`).join('');
+    root.querySelector('#ledger').innerHTML = items.map((it, i) => `<li><h3><span class="concl__n">${i + 1}</span>${esc(it.h)}</h3><div class="concl__g">${it.g}</div><p>${esc(it.d)}</p><a class="concl__to" href="#fig-${it.to}" data-to="fig-${it.to}">See the full chart</a></li>`).join('');
     const push = (x) => x && parts.push(x);
+    const tag = (id, x) => { if (x) { x.el.id = id; parts.push(x); } };
 
-    push(demandTrendFigure(figs, { demand, scope: name, series: us ? 'respondent US48, the Lower 48 total' : 'respondent PJM' }));
-    push(loadShapeFigure(figs, { demand, scope: name, series: us ? 'respondent US48, the Lower 48 total' : 'respondent PJM' }));
+    tag('fig-demand', demandTrendFigure(figs, { demand, scope: name, series: us ? 'respondent US48, the Lower 48 total' : 'respondent PJM' }));
+    tag('fig-shape', loadShapeFigure(figs, { demand, scope: name, series: us ? 'respondent US48, the Lower 48 total' : 'respondent PJM' }));
 
     if (!us) {
       const cmp = demand.comparison;
       const zs = Object.entries(cmp.zones || {}).map(([z, v]) => ({ z, name: demand.zones[z]?.name || z, base: v.baseline.avg_mw, last: v.latest.avg_mw, ch: dem(v.baseline.avg_mw, v.latest.avg_mw), d: v.latest.avg_mw - v.baseline.avg_mw })).sort((a, c) => c.d - a.d);
       if (zs.length) {
         const top = zs[0], totUp = zs.reduce((a, r) => a + r.d, 0);
-        push(simple(figs, {
+        tag('fig-zones', simple(figs, {
           title: `Where in PJM: ${top.name} added ${nf0.format(top.d)} MW of average demand, ${nf0.format((100 * top.d) / totUp)}% of the net change across zones`,
           note: 'Change in average hourly demand by PJM zone, latest 12 months against the 12 months before the release, in megawatts. Warm bars grew, cool bars shrank.',
           foot: 'Source: EIA Form EIA-930 subregion demand (route <code>electricity/rto/region-sub-ba-data</code>, parent PJM). Zones are those PJM reports to EIA. Zone totals can differ slightly from the PJM-wide series.',
@@ -131,15 +132,19 @@ export async function mount(root, data) {
       }
     }
 
-    push(generationTrendFigure(figs, { meta, ex, scope: name }));
+    tag('fig-gen', generationTrendFigure(figs, { meta, ex, scope: name }));
     if (cg) {
-      push(capacityLinkFigure(figs, { meta, cg, demand, scope: name }));
+      tag('fig-link', capacityLinkFigure(figs, { meta, cg, demand, scope: name }));
       push(yieldFigure(figs, { meta, cg, scope: name }));
     }
     root.querySelector('#more').innerHTML = us
       ? 'More detail: <a href="#/us">the full U.S. page</a> (retail sales by sector, fuel shares, every generator added and retired) and <a href="#/data">all the data</a>.'
       : 'More detail: <a href="#/case">the full PJM case study</a> (fuel shares, every generator added and retired) and <a href="#/data">all the data</a>.';
   }
+  root.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-to]');
+    if (a) { e.preventDefault(); const el = root.querySelector(`#${a.dataset.to}`); if (el) { el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); el.classList.add('fig--flash'); setTimeout(() => el.classList.remove('fig--flash'), 1600); } }
+  });
   root.addEventListener('click', (e) => { const b = e.target.closest('[data-scope]'); if (b && b.dataset.scope !== lastScope) show(b.dataset.scope); });
   await show(lastScope === 'us' && !meta.has_us ? 'pjm' : lastScope);
   return () => { token++; parts.forEach((p) => p.destroy()); };
