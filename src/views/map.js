@@ -314,7 +314,7 @@ export async function mountMap(root, data, opt) {
       const bU = winUnits.filter((u) => u.state === builder.s && u.lat != null);
       const bLat = sum(bU.map((u) => u.lat)) / (bU.length || 1), bLon = sum(bU.map((u) => u.lon)) / (bU.length || 1);
       const builderTxt = builder.s !== lead.s
-        ? `<p class="side__sub geo__near"><strong>${esc(nm(builder))} received the most new capacity: ${nf0.format(builder.add)} MW</strong>, ${nf0.format(pctOf(builder.add, tAdd))}% of the total, with ${nf0.format(pctOf(builder.sqft, tSq))}% of the floor area. Of that, ${nf0.format(builder.gas)} MW is gas and ${nf0.format(builder.solar)} MW solar; ${nf0.format(builder.ret)} MW retired there.${gasTop.length === 2 && tGas > 0 ? ` ${esc(nm(gasTop[0]))} and ${esc(nm(gasTop[1]))} together took ${nf0.format(pctOf(gasTop[0].gas + gasTop[1].gas, tGas))}% of the new gas.` : ''}</p>`
+        ? `<p class="side__sub geo__near"><strong>${esc(nm(builder))} received the most new capacity: ${nf0.format(builder.add)} MW</strong>, ${nf0.format(pctOf(builder.add, tAdd))}% of the total, with ${nf0.format(pctOf(builder.sqft, tSq))}% of the floor area. Of that, ${nf0.format(builder.gas)} MW is gas and ${nf0.format(builder.solar)} MW solar; ${nf0.format(builder.ret)} MW retired there.${gasTop.length === 2 && tGas > 0 ? ` ${esc(nm(gasTop[0]))} and ${esc(nm(gasTop[1]))} together took ${nf0.format(gasTop[0].gas + gasTop[1].gas)} of the ${nf0.format(tGas)} MW of new gas.` : ''}</p>`
         : '';
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
