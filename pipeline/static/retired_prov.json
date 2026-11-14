@@ -1,0 +1,43 @@
+{
+ "source": "EIA-860M workbook september_generator2026.xlsx (eia.gov/electricity/data/eia860m), Retired tab; copy kept in the repository at pipeline/static/retired_raw.csv.gz",
+ "sheet": "Retired",
+ "header_row": 2,
+ "rows": 7322,
+ "columns": [
+  "Entity ID",
+  "Entity Name",
+  "Plant ID",
+  "Plant Name",
+  "Google Map",
+  "Bing Map",
+  "Plant State",
+  "County",
+  "Balancing Authority Code",
+  "Sector",
+  "Generator ID",
+  "Unit Code",
+  "Nameplate Capacity (MW)",
+  "Net Summer Capacity (MW)",
+  "Net Winter Capacity (MW)",
+  "Technology",
+  "Energy Source Code",
+  "Prime Mover Code",
+  "Operating Month",
+  "Operating Year",
+  "Retirement Month",
+  "Retirement Year",
+  "Nameplate Energy Capacity (MWh)",
+  "DC Net Capacity (MW)",
+  "Latitude",
+  "Longitude"
+ ],
+ "sha256": "bcef74e1af991680731aeecfda967f5950db4ce739bb584edd8b8774c7e6da17",
+ "other_sheets": [
+  "Operating",
+  "Planned",
+  "Canceled or Postponed",
+  "Operating_PR",
+  "Planned_PR",
+  "Retired_PR"
+ ]
+}

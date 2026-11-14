@@ -580,6 +580,14 @@ def build_retired(meta: dict) -> None:
     Capacity is net summer capacity as EIA lists it. A unit is flagged PJM when its plant ID appears in the PJM
     balancing-authority snapshots pulled from the API (a plant-ID match, nothing inferred)."""
     f = CACHE / "retired_raw.csv.gz"
+    static = ROOT / "pipeline/static"
+    if (not f.exists() or "error" in meta.get("retired", {}) or "retired" not in meta) and (static / "retired_raw.csv.gz").exists():
+        # EIA refuses scripted downloads of the workbook from some networks, so the last Retired tab that was read
+        # successfully is kept in the repository and used when a fresh download is not available.
+        import shutil
+        shutil.copy(static / "retired_raw.csv.gz", f)
+        meta["retired"] = json.loads((static / "retired_prov.json").read_text())
+        meta["retired"]["from_repository_copy"] = True
     if not f.exists() or "error" in meta.get("retired", {}) or "retired" not in meta:
         print("retirements not in the cache; skipping retired.json (run: python3 -m pipeline.fetch_eia --retired-only)")
         return

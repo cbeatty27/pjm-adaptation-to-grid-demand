@@ -5,6 +5,8 @@ import { esc } from './lib/format.js';
 const view = document.getElementById('view');
 // needsUS routes read the U.S. files, which exist only when the data build included the U.S. pulls.
 const routes = {
+  findings: { load: () => import('./views/findings.js'), title: 'Findings' },
+  maps: { load: () => import('./views/maps.js'), title: 'Map and timeline' },
   us: { load: () => import('./views/usdemand.js'), title: 'U.S. demand', needsUS: true },
   usmap: { load: () => import('./views/usmap.js'), title: 'U.S. map and timeline', needsUS: true },
   map: { load: () => import('./views/map.js'), title: 'PJM map and timeline' },
@@ -15,13 +17,14 @@ const routes = {
 let cleanup = null;
 
 function setTab(name) {
-  document.querySelectorAll('.tabs a').forEach((a) => a.setAttribute('aria-selected', String(a.dataset.tab === name)));
+  const home = { us: 'findings', case: 'findings', usmap: 'maps', map: 'maps' }[name] || name;
+  document.querySelectorAll('.tabs a').forEach((a) => a.setAttribute('aria-selected', String(a.dataset.tab === home)));
   document.title = `${routes[name].title} | Grid demand since ChatGPT`;
 }
 
 async function render() {
   const { meta } = await loadAll().catch(() => ({ meta: null }));
-  const fallback = meta?.has_us ? 'usmap' : 'map';
+  const fallback = 'findings';
   const asked = (location.hash.replace(/^#\//, '') || fallback).split('?')[0];
   const key = routes[asked] ? asked : fallback;
   setTab(key);
