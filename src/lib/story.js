@@ -8,13 +8,13 @@ export function bars(items, { max = null } = {}) {
   const m = max ?? Math.max(...items.map((d) => Math.abs(d.value)), 1e-9);
   return `<div class="bars" role="img" aria-label="${esc(items.map((d) => `${d.label}: ${d.text}`).join('; '))}">${items.map((d) => `
     <div class="bars__row"><span class="bars__lab">${esc(d.label)}</span>
-      <span class="bars__track"><i style="width:${Math.max(0.8, (100 * Math.abs(d.value)) / m).toFixed(1)}%;background:${d.color}"></i><b>${esc(d.text)}</b></span></div>`).join('')}</div>`;
+      <span class="bars__track"><i style="--f:${(Math.abs(d.value) / m).toFixed(4)};background:${d.color}"></i><b>${esc(d.text)}</b></span></div>`).join('')}</div>`;
 }
 
 // Two measures per place, side by side. rows: [{ name, a, b, aText, bText }]
 export function pairs(rows, { aLabel, bLabel, aColor = C.ink, bColor = C.hot }) {
   const m = Math.max(...rows.flatMap((r) => [r.a, r.b]), 1e-9);
-  const bar = (v, color, lab, text) => `<span class="pairs__bar"><em>${esc(lab)}</em><span class="bars__track"><i style="width:${Math.max(0.8, (100 * v) / m).toFixed(1)}%;background:${color}"></i><b>${esc(text)}</b></span></span>`;
+  const bar = (v, color, lab, text) => `<span class="pairs__bar"><em>${esc(lab)}</em><span class="bars__track"><i style="--f:${(v / m).toFixed(4)};background:${color}"></i><b>${esc(text)}</b></span></span>`;
   return `<div class="pairs" role="img" aria-label="${esc(rows.map((r) => `${r.name}: ${aLabel} ${r.aText}, ${bLabel} ${r.bText}`).join('; '))}">${rows.map((r) => `
     <div class="pairs__row"><strong>${esc(r.name)}</strong><div>${bar(r.a, aColor, aLabel, r.aText)}${bar(r.b, bColor, bLabel, r.bText)}</div></div>`).join('')}</div>`;
 }
@@ -52,13 +52,13 @@ export function mountLine(el, { months, vals, ghost = null, trend = null, preLab
     if (trend) {
       g += `<path d="${path(trend, 0, split)}" fill="none" stroke="${C.ink}" stroke-width="2" stroke-dasharray="7 6"/><path d="${path(trend, split, n - 1)}" fill="none" stroke="${C.ink}" stroke-width="2" stroke-dasharray="7 6"/>`;
       const ft = trend.findIndex((v) => v != null);
-      if (preLabel && ft >= 0) g += `<text x="${x(ft)}" y="${y(trend[ft]) - (small ? 44 : 62)}" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.ink}">${esc(preLabel)}</text>`;
-      if (postLabel) g += `<text x="${W - pR}" y="${H - pB - 14}" text-anchor="end" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.hot}">${esc(postLabel)}</text>`;
+      if (preLabel && ft >= 0) g += `<text x="${x(ft)}" y="${small ? H - pB - 14 : pT + 8}" class="halo" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.ink}">${esc(small ? preLabel.replace(/^Trend b/, 'B').replace(/ \(.*\)$/, '') : preLabel)}</text>`;
+      if (postLabel) g += `<text x="${W - pR}" y="${H - pB - 14}" text-anchor="end" class="halo" font-size="${small ? 13 : 16}" font-weight="700" fill="${C.hot}">${esc(small ? postLabel.replace(/^Trend a/, 'A') : postLabel)}</text>`;
     }
     g += `<path d="${path(vals, 0, split)}" fill="none" stroke="${C.grey}" stroke-width="${small ? 3 : 4}" stroke-linejoin="round" stroke-linecap="round"/>`;
     g += `<path d="${path(vals, split, n - 1)}" fill="none" stroke="${C.hot}" stroke-width="${small ? 4 : 5}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    if (last >= 0) g += `<circle cx="${x(last)}" cy="${y(vals[last])}" r="7" fill="${C.hot}" stroke="#fff" stroke-width="3"/><text x="${x(last) - 14}" y="${y(vals[last]) - 14}" text-anchor="end" font-size="${small ? 20 : 26}" font-weight="700" fill="${C.hot}">${esc(label(vals[last]))}</text>`;
-    if (vals[split] != null) g += `<circle cx="${x(split)}" cy="${y(vals[split])}" r="5" fill="#fff" stroke="${C.ink}" stroke-width="2"/><text x="${x(split) - 12}" y="${y(vals[split]) + 28}" text-anchor="end" font-size="${small ? 15 : 18}" font-weight="700" fill="${C.ink}">${esc(label(vals[split]))}</text>`;
+    if (last >= 0) g += `<circle cx="${x(last)}" cy="${y(vals[last])}" r="7" fill="${C.hot}" stroke="#fff" stroke-width="3"/><text x="${x(last) - 14}" y="${y(vals[last]) - 14}" class="halo" text-anchor="end" font-size="${small ? 20 : 26}" font-weight="700" fill="${C.hot}">${esc(label(vals[last]))}</text>`;
+    if (vals[split] != null) g += `<circle cx="${x(split)}" cy="${y(vals[split])}" r="5" fill="#fff" stroke="${C.ink}" stroke-width="2"/><text x="${x(split) - 12}" y="${y(vals[split]) + (small ? 34 : 44)}" class="halo" text-anchor="end" font-size="${small ? 15 : 18}" font-weight="700" fill="${C.ink}">${esc(label(vals[split]))}</text>`;
     g += `<g class="bigline__cur" style="display:none"><line y1="${pT - 14}" y2="${H - pB}" stroke="${C.ink}" stroke-width="1"/><circle r="6" fill="${C.ink}" stroke="#fff" stroke-width="2"/></g>`;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('width', W); svg.setAttribute('height', H);
     svg.innerHTML = g;

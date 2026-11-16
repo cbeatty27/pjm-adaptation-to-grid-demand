@@ -48,7 +48,7 @@ export async function mount(root, data) {
     steps.push({ h: known ? `${nf0.format(share2)}% of the growth is in two places: Virginia and Ohio.` : `${nf0.format(share2)}% of the growth is in two utility territories.`,
       g: bars([...two.map((r, i) => ({ label: nm(r), value: r.d, text: `${plus(r.d)}  (up ${nf0.format(r.ch)}%)`, color: i === 0 ? C.hot : C.hotSoft })), { label: `The other ${zs.length - 2} utility territories together`, value: rest, text: `${plus(rest)}  (up ${nf0.format((100 * rest) / restBase)}%)`, color: C.grey }]),
       say: known ? 'The growth is not spread across the grid. It is where the data centers are.' : '',
-      cap: known && col != null && nova != null ? `Dominion serves northern Virginia, where ${nf0.format(nova)}% of Virginia’s data center floor space sits in three counties. AEP serves the Columbus area, where ${nf0.format(col)}% of Ohio’s sits.${(100 * rest) / restBase < 3 ? ' Everywhere else, electricity use barely moved.' : ''}` : 'Growth in average electricity use across the areas PJM reports, the latest 12 months against the 12 before the release.',
+      cap: known && col != null && nova != null ? `Dominion serves northern Virginia, where ${nf0.format(nova)}% of Virginia’s mapped data center building footprint sits in three counties. AEP serves the Columbus area, where ${nf0.format(col)}% of Ohio’s sits.${(100 * rest) / restBase < 3 ? ' Everywhere else, electricity use barely moved.' : ''}` : 'Growth in average electricity use across the areas PJM reports, the latest 12 months against the 12 before the release.',
       proof: (host) => [zoneFigure(host, zs, b, l)] });
   }
 
