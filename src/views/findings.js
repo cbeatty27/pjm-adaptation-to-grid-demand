@@ -155,10 +155,28 @@ export async function mount(root, data) {
     const yrs = P.map((u) => u.online).filter(Boolean).sort(), gasYrs = P.filter((u) => u.group === 'gas' && u.online && (u.mw || 0) >= 100).map((u) => u.online).sort();
     if (rows.length && gas) {
       const gwP = (v) => (v < 50 ? `${nf0.format(v)} MW` : gw(v));
-      steps.push({ h: gas.a < 0.05 * gas.b ? `What is coming? ${gw(gas.a + gas.b)} of gas is planned. Almost none is being built yet.` : `What is coming? ${gw(gas.a + gas.b)} of gas is planned, ${gw(gas.a)} of it under construction.`,
-        g: pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey }),
-        say: `New gas is on paper, not on the ground: ${gwP(gas.a)} under construction${gasYrs.length ? `, and the large plants are not due before ${ymLabel(gasYrs[0]).split(' ').pop()}` : ''}. What is actually being built is solar and wind.`,
-        cap: `Power plants that owners have reported to the government as planned in PJM: ${gw(all)} in total, due between ${ymLabel(yrs[0])} and ${ymLabel(yrs[yrs.length - 1])}. Sizes are on paper, and planned projects are often delayed or cancelled.` });
+      const onPaper = pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey });
+      const head = gas.a < 0.05 * gas.b ? `What is coming? ${gw(gas.a + gas.b)} of gas is planned. Almost none is being built yet.` : `What is coming? ${gw(gas.a + gas.b)} of gas is planned, ${gw(gas.a)} of it under construction.`;
+      const sayPaper = `New gas is on paper, not on the ground: ${gwP(gas.a)} under construction${gasYrs.length ? `, and the large plants are not due before ${ymLabel(gasYrs[0]).split(' ').pop()}` : ''}. What is actually being built is solar and wind.`;
+      const capBase = `Power plants that owners have reported to the government as planned in PJM: ${gw(all)} in total, due between ${ymLabel(yrs[0])} and ${ymLabel(yrs[yrs.length - 1])}. Planned projects are often delayed or cancelled.`;
+      // expected delivery: planned size times how hard PJM's existing plants of that fuel ran over the latest 12 months
+      const cfNow = cg?.windows?.[cg.windows.length - 1]?.groups || {};
+      const exp = rows.filter((r) => cfNow[r.g]?.cf > 0).map((r) => ({ ...r, cf: cfNow[r.g].cf, ea: r.a * cfNow[r.g].cf, eb: r.b * cfNow[r.g].cf }));
+      const pace = f && f.post > 0 ? f.post : null;
+      if (exp.length >= 2 && pace) {
+        const ea = exp.reduce((x, r) => x + r.ea, 0), eb = exp.reduce((x, r) => x + r.eb, 0);
+        const span = (mw) => { const mo = (12 * mw) / pace; return mo < 18 ? `${nf0.format(mo)} months` : `${(mo / 12).toFixed(1)} years`; };
+        const left = rows.filter((r) => !exp.some((x) => x.g === r.g)).map((r) => r.name.toLowerCase());
+        steps.push({ h: `What is coming? Plants under construction would cover about ${span(ea)} of demand growth.`,
+          views: [
+            { label: 'What it should deliver', g: pairs([...exp.map((r) => ({ name: r.name, a: r.ea, b: r.eb, aText: gwP(r.ea), bText: gwP(r.eb) })), { name: 'Demand', a: pace, b: 0, aText: `${plus(pace)} every year`, bText: '', hideB: true, aColor: C.hot }], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey }),
+              say: `Everything under construction should deliver about ${gw(ea)} on an average hour. Demand is growing ${gw(pace)} a year. The rest of the plan would add ${gw(eb)}, most of it gas that has not broken ground.` },
+            { label: 'Size on paper', g: onPaper, say: sayPaper },
+          ],
+          cap: `${capBase} “What it should deliver” multiplies each plant’s size by how hard PJM’s existing plants of that fuel ran over the latest 12 months (${exp.map((r) => `${r.name.toLowerCase()} ${nf0.format(100 * r.cf)}%`).join(', ')}). New plants may run more or less than that${left.length ? `; ${left.join(' and ')} ${left.length > 1 || left[0].endsWith('s') ? 'are' : 'is'} left out because ${left.includes('batteries') ? 'batteries store power and do not make it' : 'there is no running rate to apply'}` : ''}.` });
+      } else {
+        steps.push({ h: head, g: onPaper, say: sayPaper, cap: `${capBase} Sizes are on paper.` });
+      }
     }
   }
 
