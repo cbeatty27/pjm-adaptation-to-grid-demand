@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { FUEL_COLOR } from '../lib/fuels.js';
 import { geoStats, stateName } from '../lib/geo.js';
+import { loadPlaces, within, countyAt, county as findCounty, state as findState, matchLocal } from '../lib/places.js';
 import { homes } from '../lib/story.js';
 import { esc, nf0, mw as fmtMw, ymIndex, indexYm, ymLabel, sum } from '../lib/format.js';
 
@@ -288,6 +289,7 @@ export async function mountMap(root, data, opt) {
     const G = geoStats({ US, pjmStates, op, winUnits, retired, dcs });
     const p = (v, t) => (100 * v) / t, same = G ? G.builder.s === G.lead.s : true;
     const rows = G ? (same ? G.top.slice(0, 2) : [G.lead, G.builder]).map((r) => ({ name: stateName(r.s), aText: `${nf0.format(p(r.sqft, G.tSq))}%`, bText: `${nf0.format(p(r.add, G.tAdd))}%` })) : [];
+    const hubMw = G ? sum(winUnits.filter((u) => u.state === G.hub.st && String(u.county || '').replace(/ County$/i, '') === G.hub.name.replace(/ County$/i, '')).map((u) => u.mw || 0)) : 0;
     const sec = document.createElement('section');
     sec.className = 'side__section geo';
     sec.innerHTML = `<form class="find" id="findForm" role="search">
@@ -296,7 +298,7 @@ export async function mountMap(root, data, opt) {
         </form>
         <div class="find__out" id="findOut" aria-live="polite" hidden></div>
         ${G ? `<div class="geo__tiles" role="group" aria-label="Jump to an area">
-          <button type="button" id="geoZoom"><em>${esc(G.hub.name.replace(/ County$/, ''))}, ${esc(G.hub.st)}</em><b>${nf0.format(G.near.gas)} MW</b><span>of new gas plants nearby</span></button>
+          <button type="button" id="geoZoom"><em>${esc(G.hub.name)}, ${esc(G.hub.st)}</em><b>${nf0.format(hubMw)} MW</b><span>of new power plants in the county</span></button>
           ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><em>${esc(stateName(G.builder.s))}</em><b>${nf0.format(p(G.builder.add, G.tAdd))}%</b><span>of all new power plants</span></button>` : ''}
         </div>` : ''}
         <button type="button" class="geo__out" id="geoAll">Zoom back out</button>
@@ -307,35 +309,33 @@ export async function mountMap(root, data, opt) {
     const side = root.querySelector('.mapview__side');
     side.insertBefore(sec, side.children[0]);
 
-    const rad = (x) => (x * Math.PI) / 180;
-    const kmBetween = (la1, lo1, la2, lo2) => { const a = Math.sin(rad(la2 - la1) / 2) ** 2 + Math.cos(rad(la1)) * Math.cos(rad(la2)) * Math.sin(rad(lo2 - lo1) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(a)); };
-    const ring = (lat, lon, km) => { const pts = []; for (let i = 0; i <= 72; i++) { const t = (i / 72) * 2 * Math.PI; pts.push([lon + ((km / 111.32) * Math.cos(t)) / Math.cos(rad(lat)), lat + (km / 110.57) * Math.sin(t)]); } return { type: 'Polygon', coordinates: [pts] }; };
-    const boxOf = (geom) => { let w = 180, s2 = 90, e = -180, n = -90; const walk = (c) => (typeof c[0] === 'number' ? (w = Math.min(w, c[0]), e = Math.max(e, c[0]), s2 = Math.min(s2, c[1]), n = Math.max(n, c[1])) : c.forEach(walk)); walk(geom.coordinates); return [[w, s2], [e, n]]; };
-    const inRing = (pt, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { if ((r[i][1] > pt[1]) !== (r[j][1] > pt[1]) && pt[0] < ((r[j][0] - r[i][0]) * (pt[1] - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; } return c; };
-    const inside = (geom, lon, lat) => (geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates).some((poly) => inRing([lon, lat], poly[0]) && !poly.slice(1).some((h) => inRing([lon, lat], h)));
     const out = sec.querySelector('#findOut');
-    function highlight(geom, title, note = '') {
-      map.getSource('hl')?.setData({ type: 'Feature', properties: {}, geometry: geom });
-      map.fitBounds(boxOf(geom), { padding: { top: 60, right: 60, bottom: 60, left: map.getContainer().clientWidth > 900 ? 390 : 60 }, maxZoom: 11, duration: 900 });
-      const dcIn = dcs.filter((d) => d.type === 'building' && d.lat != null && inside(geom, d.lon, d.lat));
-      const upIn = winUnits.filter((u) => u.lat != null && inside(geom, u.lon, u.lat));
+    const none = { type: 'FeatureCollection', features: [] };
+    // place: { label, geom, box: [w, s, e, n] } from the county and state outlines
+    function highlight(place, title = place.label, note = '') {
+      map.getSource('hl')?.setData({ type: 'Feature', properties: {}, geometry: place.geom });
+      const [w, s2, e, n] = place.box;
+      map.fitBounds([[w, s2], [e, n]], { padding: { top: 60, right: 60, bottom: 60, left: map.getContainer().clientWidth > 900 ? 390 : 60 }, maxZoom: 10.5, duration: 900 });
+      const dcIn = dcs.filter((d) => d.type === 'building' && d.lat != null && within(place, d.lon, d.lat));
+      const upIn = winUnits.filter((u) => u.lat != null && within(place, u.lon, u.lat));
       const mw = sum(upIn.map((u) => u.mw || 0)), sq = sum(dcIn.map((d) => d.sqft || 0));
       out.hidden = false;
       out.innerHTML = `<strong>${esc(title)}</strong>
         <div class="find__stats"><span><b>${sq >= 1e5 ? `${(sq / 1e6).toFixed(1)}M` : nf0.format(sq)}</b> sq ft of data center buildings</span><span><b>${mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${nf0.format(mw)} MW`}</b> of new power plants</span></div>
         ${note ? `<p>${note}</p>` : ''}`;
     }
-    function clear() { map.getSource('hl')?.setData({ type: 'FeatureCollection', features: [] }); out.hidden = true; }
-    if (G) {
-      sec.querySelector('#geoZoom').addEventListener('click', () => highlight(ring(G.hub.lat, G.hub.lon, 100), `Within 100 km of ${G.hub.name}, ${G.hub.st}`));
-      sec.querySelector('#geoZoom2')?.addEventListener('click', () => {
-        const us2 = winUnits.filter((u) => u.state === G.builder.s && u.lat != null);
-        const far = Math.max(...us2.map((u) => kmBetween(G.bCenter.lat, G.bCenter.lon, u.lat, u.lon)));
-        highlight(ring(G.bCenter.lat, G.bCenter.lon, far + 15), `Around ${stateName(G.builder.s)}’s new power plants`, 'The circle is drawn around the plants, not along the state line.');
-      });
+    const fail = (msg) => { out.hidden = false; out.innerHTML = `<p>${msg}</p>`; map.getSource('hl')?.setData(none); };
+    async function jump(find, missing) {
+      out.hidden = false; out.innerHTML = '<p>Loading the outline…</p>';
+      try { const pl = await loadPlaces(), place = find(pl); place ? highlight(place) : fail(missing); } catch { fail('The outlines could not be loaded. Reload the page to try again.'); }
     }
-    sec.querySelector('#geoAll').addEventListener('click', () => { clear(); fitAll(true); });
-    // Place search: OpenStreetMap's Nominatim service turns the typed name into an outline. Sent only when Search is pressed.
+    if (G) {
+      sec.querySelector('#geoZoom').addEventListener('click', () => jump((pl) => findCounty(pl, G.hub.name, G.hub.st), 'No outline found for this county.'));
+      sec.querySelector('#geoZoom2')?.addEventListener('click', () => jump((pl) => findState(pl, G.builder.s), 'No outline found for this state.'));
+    }
+    sec.querySelector('#geoAll').addEventListener('click', () => { map.getSource('hl')?.setData(none); out.hidden = true; fitAll(true); });
+    // Search: states and counties are matched on the page. Towns and ZIP codes are looked up with OpenStreetMap's
+    // Nominatim service (sent only when Search is pressed), then shown as the county they are in.
     let busy = false;
     sec.querySelector('#findForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -343,16 +343,18 @@ export async function mountMap(root, data, opt) {
       if (!q || busy) return;
       busy = true; out.hidden = false; out.innerHTML = '<p>Searching…</p>';
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&limit=1&polygon_geojson=1&polygon_threshold=0.002&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
+        const pl = await loadPlaces();
+        const local = matchLocal(pl, q, US ? [] : [...pjmStates]);
+        if (local) { highlight(local); return; }
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&limit=1&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
         if (!res.ok) throw new Error(String(res.status));
         const hit = (await res.json())[0];
-        if (!hit) { out.innerHTML = `<p>No place found for “${esc(q)}”. Try a town with its state, a county, or a 5-digit ZIP code.</p>`; map.getSource('hl')?.setData({ type: 'FeatureCollection', features: [] }); return; }
-        const area = hit.geojson && (hit.geojson.type === 'Polygon' || hit.geojson.type === 'MultiPolygon');
-        const name = String(hit.display_name || q).replace(/, United States$/, '');
-        if (area) highlight(hit.geojson, name, 'Place outline from OpenStreetMap.');
-        else highlight(ring(Number(hit.lat), Number(hit.lon), 25), `Within 25 km of ${name}`, 'Place found by OpenStreetMap.');
+        const c = hit ? countyAt(pl, Number(hit.lon), Number(hit.lat)) : null;
+        if (!c) { fail(`No place found for “${esc(q)}”. Try a town with its state, a county, or a 5-digit ZIP code.`); return; }
+        const first = String(hit.display_name || q).split(',')[0].trim();
+        highlight(c, c.label, `${esc(first)} is in ${esc(c.label)}. Place found by OpenStreetMap.`);
       } catch {
-        out.innerHTML = '<p>The place search could not be reached. Check your connection and try again.</p>';
+        fail('The place search could not be reached. Check your connection and try again, or search for a county or state.');
       } finally { busy = false; }
     });
   }
