@@ -1,7 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { FUEL_COLOR } from '../lib/fuels.js';
 import { geoStats, stateName } from '../lib/geo.js';
-import { loadPlaces, within, countyAt, county as findCounty, state as findState, matchLocal } from '../lib/places.js';
+import { loadPlaces, within, countyAt, county as findCounty, state as findState, matchLocal, suggest } from '../lib/places.js';
 import { homes } from '../lib/story.js';
 import { esc, nf0, mw as fmtMw, ymIndex, indexYm, ymLabel, sum } from '../lib/format.js';
 
@@ -294,7 +294,8 @@ export async function mountMap(root, data, opt) {
     sec.className = 'side__section geo';
     sec.innerHTML = `<form class="find" id="findForm" role="search">
           <label for="findQ">Find a place</label>
-          <div class="find__row"><input id="findQ" type="search" autocomplete="off" placeholder="Town, county or ZIP code" enterkeyhint="search"><button type="submit">Search</button></div>
+          <div class="find__row"><input id="findQ" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="findList" aria-autocomplete="list" placeholder="Town, county or ZIP code" enterkeyhint="search"><button type="submit">Search</button></div>
+          <ul class="find__list" id="findList" role="listbox" aria-label="Suggested places" hidden></ul>
         </form>
         <div class="find__out" id="findOut" aria-live="polite" hidden></div>
         ${G ? `<div class="geo__tiles" role="group" aria-label="Jump to an area">
@@ -334,6 +335,49 @@ export async function mountMap(root, data, opt) {
       sec.querySelector('#geoZoom2')?.addEventListener('click', () => jump((pl) => findState(pl, G.builder.s), 'No outline found for this state.'));
     }
     sec.querySelector('#geoAll').addEventListener('click', () => { map.getSource('hl')?.setData(none); out.hidden = true; fitAll(true); });
+    // Suggestions: with the box empty, the counties with the most data center building footprint; while typing, matching states and counties.
+    const qEl = sec.querySelector('#findQ'), list = sec.querySelector('#findList');
+    const byCounty = {};
+    dcs.filter((d) => d.type === 'building' && d.county && (US || pjmStates.has(d.state_abb))).forEach((d) => { const k = `${d.county}|${d.state_abb}`; byCounty[k] = (byCounty[k] || 0) + (d.sqft || 0); });
+    const topCounties = Object.entries(byCounty).sort((a, c) => c[1] - a[1]).slice(0, 5).map(([k, sq]) => { const [name, abb] = k.split('|'); return { name, abb, sq }; });
+    let items = [], active = -1;
+    const closeList = () => { list.hidden = true; qEl.setAttribute('aria-expanded', 'false'); active = -1; };
+    function showList(entries, head) {
+      items = entries;
+      if (!entries.length) { closeList(); return; }
+      list.innerHTML = `${head ? `<li class="find__head" role="presentation">${esc(head)}</li>` : ''}${entries.map((it, i) => `<li role="option" id="findOpt${i}" data-i="${i}"><span>${esc(it.label)}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</li>`).join('')}`;
+      list.hidden = false; qEl.setAttribute('aria-expanded', 'true'); active = -1;
+    }
+    async function refresh() {
+      const q = qEl.value.trim();
+      let pl; try { pl = await loadPlaces(); } catch { return; }
+      if (qEl.value.trim() !== q || document.activeElement !== qEl) return;
+      if (!q) { showList(topCounties.map((c) => ({ label: `${c.name}, ${c.abb}`, sub: `${(c.sq / 1e6).toFixed(1)}M sq ft of data centers`, place: findCounty(pl, c.name, c.abb) })).filter((it) => it.place), 'Most data center floor space'); return; }
+      const sqOf = (x) => (x.kind === 'county' ? byCounty[`${x.name} County|${x.abb}`] || byCounty[`${x.name}|${x.abb}`] || 0 : 0);
+      // places that hold data centers come first, then the rest in name order
+      const hits = suggest(pl, q, US ? [] : [...pjmStates], 4000).map((x, i) => ({ x, i, sq: sqOf(x) })).sort((a, c) => (c.x.kind === 'state') - (a.x.kind === 'state') || c.sq - a.sq || a.i - c.i).slice(0, 6)
+        .map(({ x, sq }) => ({ label: x.label, sub: x.kind === 'state' ? 'State' : sq ? `${sq >= 1e5 ? `${(sq / 1e6).toFixed(1)}M` : nf0.format(sq)} sq ft of data centers` : '', place: x }));
+      showList([...hits, { label: `Search for “${q}”`, sub: 'Town or ZIP code', query: q }]);
+    }
+    function pick(it) {
+      closeList();
+      if (it.place) { qEl.value = it.place.label; highlight(it.place); } else sec.querySelector('#findForm').requestSubmit();
+    }
+    qEl.addEventListener('focus', refresh);
+    qEl.addEventListener('input', refresh);
+    qEl.addEventListener('blur', () => setTimeout(closeList, 150));
+    qEl.addEventListener('keydown', (e) => {
+      if (list.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length + (active < 0 && e.key === 'ArrowUp' ? 1 : 0)) % items.length;
+        list.querySelectorAll('[role=option]').forEach((li, i) => li.setAttribute('aria-selected', String(i === active)));
+        qEl.setAttribute('aria-activedescendant', `findOpt${active}`);
+      } else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); pick(items[active]); }
+      else if (e.key === 'Escape') closeList();
+    });
+    list.addEventListener('mousedown', (e) => { const li = e.target.closest('[data-i]'); if (li) { e.preventDefault(); pick(items[Number(li.dataset.i)]); } });
+
     // Search: states and counties are matched on the page. Towns and ZIP codes are looked up with OpenStreetMap's
     // Nominatim service (sent only when Search is pressed), then shown as the county they are in.
     let busy = false;
@@ -341,6 +385,7 @@ export async function mountMap(root, data, opt) {
       e.preventDefault();
       const q = sec.querySelector('#findQ').value.trim();
       if (!q || busy) return;
+      closeList();
       busy = true; out.hidden = false; out.innerHTML = '<p>Searching…</p>';
       try {
         const pl = await loadPlaces();

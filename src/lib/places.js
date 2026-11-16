@@ -42,3 +42,11 @@ export function matchLocal(places, q, prefer = []) {
   if (pref.length === 1) return pref[0];
   return saidCounty ? (pref[0] || hits[0]) : null;
 }
+
+// Suggestions while typing: states and counties whose name starts with the text (then those that contain it).
+export function suggest(places, q, prefer = [], limit = 6) {
+  const n = norm(q);
+  if (!n || /^\d/.test(q.trim())) return [];
+  const score = (pl) => { const nm = norm(pl.kind === 'county' ? `${pl.name} ${pl.abb} ${pl.stateName}` : pl.name), base = norm(pl.name); const at = base.startsWith(n) ? 0 : nm.startsWith(n) ? 1 : nm.includes(` ${n}`) ? 2 : -1; return at < 0 ? -1 : at * 10 + (pl.kind === 'state' ? 0 : 2) + (prefer.includes(pl.abb) ? 0 : 4); };
+  return [...places.states, ...places.counties].map((pl) => ({ pl, sc: score(pl) })).filter((x) => x.sc >= 0).sort((a, c) => a.sc - c.sc || a.pl.label.localeCompare(c.pl.label)).slice(0, limit).map((x) => x.pl);
+}
