@@ -121,6 +121,7 @@ export async function mount(root, data) {
       <span class="step__n" aria-hidden="true">1</span>
       <h3>${sped ? `Electricity use is climbing ${pct((100 * f.post) / b.avg_mw).replace('+', '')} a year, after years of no growth.` : 'Electricity use before and after ChatGPT.'}</h3>
       <div id="heroLine"></div>
+      ${f ? `<p class="step__say">Before ChatGPT: ${pct((100 * f.pre) / b.avg_mw)} a year (${plus(f.pre)} a year), from ${esc(ymLabel(f.first))} to ${esc(ymLabel(RELEASE))}. Since: ${pct((100 * f.post) / b.avg_mw)} a year (${plus(f.post)} a year).</p>` : ''}
       <p class="step__cap">Average electricity use in PJM, smoothed over 12 months, in gigawatts (GW). The dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading. Touch the line to read any month.</p>
       <details class="proof" data-proof="0"><summary>Show the full chart and how it was checked</summary><div></div></details>
     </section>
@@ -151,7 +152,7 @@ export async function mount(root, data) {
   parts.push(mountLine(root.querySelector('#heroLine'), {
     months: ms.slice(0, end), vals: r2.slice(0, end), ghost: sped ? ghost.slice(0, end) : null, split: ri,
     trend: f ? rolling12(mo.months, mo.months.map((m) => f.fitAt(m))).slice(i0, i0 + end) : null,
-    preLabel: f ? `Trend before: ${Math.abs((100 * f.pre) / b.avg_mw) < 0.3 ? 'flat' : `${pct((100 * f.pre) / b.avg_mw)} a year`}` : '', postLabel: f ? `Trend after: ${pct((100 * f.post) / b.avg_mw)} a year` : '',
+    preLabel: f ? `Trend before: ${Math.abs((100 * f.pre) / b.avg_mw) < 0.3 ? 'flat ' : ''}(${pct((100 * f.pre) / b.avg_mw)} a year)`.replace(': (', ': ').replace(/\)$/, (m) => (Math.abs((100 * f.pre) / b.avg_mw) < 0.3 ? m : '')) : '', postLabel: f ? `Trend after: ${pct((100 * f.post) / b.avg_mw)} a year` : '',
     fmt: (v, d = 0) => `${(v / 1000).toFixed(d)} GW`, label: (v) => `${(v / 1000).toFixed(0)} GW`,
     splitLabel: 'ChatGPT released', ghostLabel: 'Earlier trend',
     aria: `Average electricity use in PJM over 12 months: about ${nf0.format(b.avg_mw / 1000)} gigawatts before the release of ChatGPT and ${nf0.format(l.avg_mw / 1000)} gigawatts now`,
