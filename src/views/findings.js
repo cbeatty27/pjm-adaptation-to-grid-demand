@@ -57,7 +57,7 @@ export async function mount(root, data) {
   if (geo) {
     const p = (v, t) => (100 * v) / t, same = geo.builder.s === geo.lead.s;
     const rows = (same ? geo.top.slice(0, 2) : [geo.lead, geo.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, geo.tSq), b: p(r.add, geo.tAdd), aText: `${nf0.format(p(r.sqft, geo.tSq))}%`, bText: `${nf0.format(p(r.add, geo.tAdd))}%` }));
-    steps.push({ h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
+    steps.push({ key: 'where', h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
       say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
       g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity' }),
       cap: `Data centers are measured by the ground area of their buildings in the IM3 Data Center Atlas, added up for the PJM states. It is not their power use, which the atlas does not report.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
@@ -129,13 +129,13 @@ export async function mount(root, data) {
         const downs = [...Object.entries(d.g).filter(([, x]) => x <= -50).map(([k, x]) => ({ k, x, label: lab[k] || k })), ...(less <= -50 ? [{ k: 'less', x: less, label: 'Sold more to neighboring grids' }] : [])].sort((a, c) => a.x - c.x);
         const gap = d.d - downs.reduce((a, r) => a + r.x, 0);
         const col = (k) => ({ gas: C.gas, solar: C.solar }[k] || C.grey);
-        steps.push({ h: `What is picking up the slack? ${ups.slice(0, 2).map((r) => (r.k === 'gas' ? 'Gas' : r.label)).join(' first, then ').replace(/, then (\w)/, (m, c) => `, then ${c.toLowerCase()}`)}.`,
+        steps.push({ key: 'slack', h: `What is picking up the slack? ${ups.slice(0, 2).map((r) => (r.k === 'gas' ? 'Gas' : r.label)).join(' first, then ').replace(/, then (\w)/, (m, c) => `, then ${c.toLowerCase()}`)}.`,
           g: bars([{ label: 'Gap to fill', value: gap, text: gw(gap), color: C.hot }, ...ups.map((r) => ({ label: r.label, value: r.x, text: plus(r.x), color: col(r.k) }))]),
           say: `PJM had to find ${gw(gap)}: ${gw(d.d)} of new demand${downs.length ? `, plus ${gw(downs[0].x)} that ${downs[0].label.toLowerCase()} no longer supplies` : ''}. Gas covered ${nf0.format((100 * d.g.gas) / gap)}% of it, most of that from plants built years ago.`,
           cap: `Change in average power, the latest 12 months against the 12 before the release. Of the extra gas, ${gw(r.use)} came from existing plants running more (${nf0.format(100 * r.cf0)}% of their limit before, ${nf0.format(100 * r.cf1)}% now) and ${gw(r.cap)} from the fleet growing: PJM opened ${gw(opened)} of gas plants and closed ${gw(closed)}${where}.${d.g.other >= 50 ? ' “Other sources” is what PJM reports to EIA as “other” plus oil. The data does not say what is in it; it has risen steadily since 2024, not in one step.' : ''}`,
           proof: (host) => [generationTrendFigure(host, { meta, ex, scope: 'PJM' }), ...(grown ? [] : proofLink(host))] });
       } else {
-      steps.push({ h: `What is picking up the slack? Old ${isGas ? 'gas' : nm} plants, running harder.`,
+      steps.push({ key: 'slack', h: `What is picking up the slack? Old ${isGas ? 'gas' : nm} plants, running harder.`,
         g: bars([{ label: `From ${isGas ? 'gas' : nm} plants that already existed, running more`, value: r.use, text: `${plus(r.use)}`, color: C.gas }, { label: `From new ${isGas ? 'gas' : nm} plants, after subtracting closed ones`, value: r.cap, text: `${plus(r.cap)}`, color: C.grey }]),
         say: opened > 0 && closed > 0 ? `PJM is barely building new ${isGas ? 'gas' : nm} plants. The gap is filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.` : `The gap is being filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.`,
         cap: `Both bars are extra power actually delivered on an average hour, not plant size. Since the release PJM opened ${gw(opened)} of ${isGas ? 'gas' : nm} plants (size on paper) and closed ${gw(closed)}${where}, so the fleet barely grew, and a ${isGas ? 'gas' : nm} plant delivers about ${nf0.format(100 * r.cf0)}% of its size on average. Meanwhile the existing fleet went from running at ${nf0.format(100 * r.cf0)}% of its limit to ${nf0.format(100 * r.cf1)}%.${coal < 0 ? ` Over the same time, ${gw(coal)} of coal plants closed.` : ''}`,
@@ -179,6 +179,9 @@ export async function mount(root, data) {
       }
     }
   }
+
+  // order of the argument: demand (1-3), then supply: what was built, what filled the gap, where it was built, what is coming
+  { const w = steps.findIndex((x) => x.key === 'where'), k = steps.findIndex((x) => x.key === 'slack'); if (w >= 0 && k > w) steps.splice(k, 0, steps.splice(w, 1)[0]); }
 
   root.innerHTML = `<article class="story">
     <header class="hero">
