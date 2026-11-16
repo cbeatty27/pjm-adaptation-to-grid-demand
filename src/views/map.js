@@ -1,7 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { FUEL_COLOR } from '../lib/fuels.js';
 import { geoStats, stateName } from '../lib/geo.js';
-import { pairs } from '../lib/story.js';
+import { pairs, homes } from '../lib/story.js';
 import { esc, nf0, mw as fmtMw, ymIndex, indexYm, ymLabel, sum } from '../lib/format.js';
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
@@ -95,6 +95,7 @@ export async function mountMap(root, data, opt) {
         <section class="side__section" aria-live="polite">
           <h2 id="sumTitle"></h2>
           <div class="side__big num"><span id="sumMw"></span><small>GW</small></div>
+          <p class="side__sub" id="sumCtx"></p>
           <p class="side__sub" id="sumSub"></p>
           <ul class="fuelrows" id="fuelRows"></ul>
           <p class="side__sub" id="sumRet"></p>
@@ -136,7 +137,7 @@ export async function mountMap(root, data, opt) {
 
   // ---- map ----
   const { style, ok } = await pickStyle();
-  const map = new maplibregl.Map({ container: 'map', style, center: US ? [-96.5, 38.6] : [-79.5, 39.8], zoom: US ? 3.4 : 5.2, attributionControl: { compact: true } });
+  const map = new maplibregl.Map({ container: root.querySelector('#map'), style, center: US ? [-96.5, 38.6] : [-79.5, 39.8], zoom: US ? 3.4 : 5.2, attributionControl: { compact: true } });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
   if (!ok) { const n = $('mapnote'); n.hidden = false; n.textContent = 'The basemap could not be loaded. Data layers still work.'; }
 
@@ -287,13 +288,15 @@ export async function mountMap(root, data, opt) {
       const rows = (same ? G.top.slice(0, 2) : [G.lead, G.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, G.tSq), b: p(r.add, G.tAdd), aText: `${nf0.format(p(r.sqft, G.tSq))}%`, bText: `${nf0.format(p(r.add, G.tAdd))}%` }));
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
-      sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : `${esc(stateName(G.lead.s))} has the data centers. ${esc(stateName(G.builder.s))} got the power plants.`}</h2>
+      sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : (p(G.lead.sqft, G.tSq) > 50 ? `Most data centers are in ${esc(stateName(G.lead.s))}. Most new power plants are not.` : `${esc(stateName(G.lead.s))} has the most data centers. ${esc(stateName(G.builder.s))} got the most new power plants.`)}</h2>
+        <p class="geo__how">${dcGlyph('building')} Squares are data centers. <i class="dotkey" style="opacity:1"></i> Circles are power plants opened since ChatGPT’s release, colored by fuel.</p>
         ${pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' })}
         <div class="geo__go" role="group" aria-label="Look closer">
           <button type="button" id="geoZoom"><b>${esc(G.hub.name)}, ${esc(G.hub.st)}</b><span>The most data centers of any county. New gas plants within 100 km: ${nf0.format(G.near.gas)} MW.</span></button>
-          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><b>${esc(stateName(G.builder.s))}</b><span>${nf0.format(p(G.builder.add, G.tAdd))}% of the new power plants${G.gasTop.length === 2 && G.tGas > 0 ? `, and with ${esc(stateName(G.gasTop.find((r) => r.s !== G.builder.s)?.s || G.gasTop[1].s))} nearly all of the new gas` : ''}.</span></button>` : ''}
+          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><b>${esc(stateName(G.builder.s))}</b><span>${nf0.format(p(G.builder.add, G.tAdd))}% of the new power plants${G.gasTop.length === 2 && G.tGas > 0 && (G.gasTop[0].gas + G.gasTop[1].gas) / G.tGas > 0.95 && G.gasTop.some((r) => r.s === G.builder.s) ? `, and with ${esc(stateName(G.gasTop.find((r) => r.s !== G.builder.s)?.s || G.gasTop[1].s))} nearly all of the new gas` : ''}.</span></button>` : ''}
           <button type="button" id="geoAll"><b>${US ? 'The whole U.S.' : 'All of PJM'}</b><span>Zoom back out.</span></button>
         </div>
+        ${same ? '' : `<p class="geo__take">${esc(stateName(G.builder.s))}${G.top[1]?.s === G.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${esc(stateName(G.lead.s))}, ${G.top[1] && G.lead.sqft > 2 * G.top[1].sqft ? 'far ahead' : 'first'} in data centers, got ${nf0.format(p(G.lead.add, G.tAdd))}%.</p>`}
         <details class="fineprint"><summary>About these numbers</summary>
           <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
           <p>Floor space is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. New power plants are EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window.</p></details>`;
@@ -319,6 +322,7 @@ export async function mountMap(root, data, opt) {
       ? `New power plants, Dec 2022 to ${ymLabel(indexYm(T))}`
       : `New power plants in ${ymLabel(indexYm(T))}`;
     $('sumMw').textContent = (mwTot / 1000).toFixed(mwTot >= 100 ? 1 : 2);
+    $('sumCtx').textContent = mwTot >= 500 ? `At full output, enough for about ${homes(mwTot)} homes. Most plants run well below full output.` : '';
     $('sumSub').textContent = `${nf0.format(nTot)} generators. Tap a fuel to hide or show it.`;
     if (opt.retired) {
       const rr = (opt.retired || []).filter((r) => r.ret && ymIndex(r.ret) > WIN && (state.mode === 'cum' ? ymIndex(r.ret) <= T : ymIndex(r.ret) === T) && state.fuels.has(r.group));

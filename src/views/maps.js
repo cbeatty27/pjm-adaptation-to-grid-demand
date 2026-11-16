@@ -13,13 +13,21 @@ export async function mount(root, data) {
     last = place;
     root.querySelectorAll('[data-place]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.place === place)));
     if (cleanup) { cleanup(); cleanup = null; }
-    host.innerHTML = '';
-    let c;
-    if (place === 'us') {
-      const us = await loadUS();
-      if (my !== token) return;
-      c = await mountMap(host, data, { scope: 'us', units: us.units, snapshot: data.meta.plants_us.snapshot_period, statusNames: us.statusNames, retired: data.retired });
-    } else c = await mountPjm(host, data);
+    // each map gets its own box, so a map still loading can never draw into the one that replaced it
+    const box = document.createElement('div');
+    box.innerHTML = `<p class="maploading" role="status">Loading the ${place === 'us' ? 'U.S.' : 'PJM'} map…</p>`;
+    host.replaceChildren(box);
+    let c = null;
+    try {
+      if (place === 'us') {
+        const us = await loadUS();
+        if (my !== token) return;
+        c = await mountMap(box, data, { scope: 'us', units: us.units, snapshot: data.meta.plants_us.snapshot_period, statusNames: us.statusNames, retired: data.retired });
+      } else c = await mountPjm(box, data);
+    } catch (err) {
+      if (my === token) box.innerHTML = `<p class="maploading" role="alert">The ${place === 'us' ? 'U.S.' : 'PJM'} map could not be loaded (${String(err?.message || err).replace(/[<&]/g, '')}). Reload the page to try again.</p>`;
+      return;
+    }
     if (my !== token) { c && c(); return; }
     cleanup = c || null;
   }

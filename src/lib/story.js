@@ -85,3 +85,10 @@ export function mountLine(el, { months, vals, ghost = null, trend = null, preLab
   ro.observe(el);
   return { destroy: () => ro.disconnect() };
 }
+
+// 1 GW in homes: EIA's average U.S. home bought 10,791 kWh in 2022, an average draw of about 1.23 kW.
+export const HOME_KW = 10791 / 8760;
+export function homes(mw) {
+  const n = (mw * 1000) / HOME_KW;
+  return n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)} million` : `${Math.round(n / 1e4) * 10},000`;
+}

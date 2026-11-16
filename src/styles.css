@@ -370,3 +370,9 @@ main { flex: 1; min-height: 0; outline: none; }
 .ml__n svg { display: inline-block; }
 .dock__row .btn { background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 9px 22px; font-weight: 700; font-size: 15px; }
 .dock__row .btn:hover:not(:disabled) { background: var(--accent-ink); }
+.hero .hero__gw { margin-top: 18px; padding: 14px 18px; background: var(--accent-soft); border-radius: 14px; font-size: 16.5px; color: var(--ink); max-width: 60ch; }
+.hero .hero__gw b { font-family: var(--display); }
+.maploading { padding: 80px 24px; text-align: center; color: var(--ink-2); font-size: 17px; }
+.geo__how { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); margin: -6px 0 16px; }
+.geo__how svg, .geo__how i { vertical-align: -2px; margin-right: 2px; }
+.geo__take { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 16px 0 0; padding-left: 12px; border-left: 4px solid var(--accent); }

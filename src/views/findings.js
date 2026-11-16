@@ -5,7 +5,7 @@ import { Chart, GRID, table, simple, yieldFigure, dem } from '../lib/figs.js';
 import { demandTrendFigure, loadShapeFigure, generationTrendFigure, capacityLinkFigure, complete } from '../lib/trendfigs.js';
 import { trendFit, rolling12, RELEASE } from '../lib/stats.js';
 import { loadExplorer, loadHourly } from '../lib/data.js';
-import { bars, pairs, mountLine, C } from '../lib/story.js';
+import { bars, pairs, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
 
 const gw = (mw, d = 1) => `${(Math.abs(mw) / 1000).toFixed(d)} GW`;
@@ -57,7 +57,8 @@ export async function mount(root, data) {
   if (geo) {
     const p = (v, t) => (100 * v) / t, same = geo.builder.s === geo.lead.s;
     const rows = (same ? geo.top.slice(0, 2) : [geo.lead, geo.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, geo.tSq), b: p(r.add, geo.tAdd), aText: `${nf0.format(p(r.sqft, geo.tSq))}%`, bText: `${nf0.format(p(r.add, geo.tAdd))}%` }));
-    steps.push({ h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `${stateName(geo.lead.s)} has the data centers. ${stateName(geo.builder.s)} got the power plants.`,
+    steps.push({ h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
+      say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
       g: pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' }),
       cap: `Each state's share of the PJM states' total.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
       link: ['#/maps', 'See it on the map'] });
@@ -114,6 +115,7 @@ export async function mount(root, data) {
     <header class="hero">
       <h2>${sped ? 'Electricity use was flat for years. Then it started climbing.' : `Electricity use is ${Math.abs(up).toFixed(0)}% ${up >= 0 ? 'higher' : 'lower'} than before ChatGPT.`}</h2>
       <p>PJM runs the power grid for 13 states and Washington, D.C. Since ChatGPT came out in November 2022, electricity use there is <strong>${up >= 0 ? 'up' : 'down'} ${Math.abs(up).toFixed(0)}%</strong>. Here is what changed, in ${steps.length + 1} pictures.</p>
+      <p class="hero__gw"><b>1 GW</b> (gigawatt) is a measure of power: about what ${homes(1000)} average American homes use at once, or one large nuclear reactor. The growth since ChatGPT is ${gw(l.avg_mw - b.avg_mw)}, about ${homes(l.avg_mw - b.avg_mw)} homes’ worth.</p>
     </header>
     <section class="step step--hero">
       <div id="heroLine"></div>
