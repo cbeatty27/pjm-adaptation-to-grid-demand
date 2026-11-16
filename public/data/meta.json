@@ -1,45 +1,45 @@
 {
-  "retrieved_at_utc": "2026-11-12T23:57:33+00:00",
+  "retrieved_at_utc": "2026-11-16T19:43:39+00:00",
   "routes": {
     "demand": {
       "route": "electricity/rto/region-data",
       "startPeriod": "2019-01-01T00",
-      "endPeriod": "2026-11-13T08",
+      "endPeriod": "2026-11-17T08",
       "facets": [
         "respondent",
         "type"
       ],
-      "rows": 68951
+      "rows": 69042
     },
     "subba": {
       "route": "electricity/rto/region-sub-ba-data",
       "startPeriod": "2019-01-01T00",
-      "endPeriod": "2026-11-12T08",
+      "endPeriod": "2026-11-16T08",
       "facets": [
         "subba",
         "parent"
       ],
-      "rows": 1372340
+      "rows": 1374260
     },
     "fuel": {
       "route": "electricity/rto/fuel-type-data",
       "startPeriod": "2019-01-01T00",
-      "endPeriod": "2026-11-12T07",
+      "endPeriod": "2026-11-16T07",
       "facets": [
         "respondent",
         "fueltype"
       ],
-      "rows": 551415
+      "rows": 552183
     },
     "demand_us": {
       "route": "electricity/rto/region-data",
       "respondent": "US48",
-      "rows": 68953
+      "rows": 69043
     },
     "fuel_us": {
       "route": "electricity/rto/fuel-type-data",
       "respondent": "US48",
-      "rows": 681567
+      "rows": 683103
     }
   },
   "generators_meta": {
@@ -218,7 +218,7 @@
     "other_is": "all-fuels total minus the fuels listed (oil, biomass, geothermal, waste and any other)"
   },
   "retired": {
-    "source": "local file september_generator2026.xlsx",
+    "source": "EIA-860M workbook september_generator2026.xlsx (eia.gov/electricity/data/eia860m), Retired tab; copy kept in the repository at pipeline/static/retired_raw.csv.gz",
     "sheet": "Retired",
     "header_row": 2,
     "rows": 7322,
@@ -259,6 +259,7 @@
       "Planned_PR",
       "Retired_PR"
     ],
+    "from_repository_copy": true,
     "capacity_basis": "net summer capacity",
     "capacity_column": "Net Summer Capacity (MW)",
     "rows_on_tab": 7322,
@@ -275,22 +276,22 @@
     "pjm_rule": "balancing authority code PJM on the Retired tab; where the code is blank, plant ID found in the PJM snapshots from the generator-inventory API route",
     "pjm_rows_by_ba_code": 260,
     "pjm_rows_by_plant_id": 0,
+    "history_rows_since_2015": 3676,
+    "history_missing_online_date": 0,
     "crosscheck": {
       "pjm": {
-        "left_inventory_units": 274,
+        "left_inventory_units": 272,
         "of_which_on_retired_tab": 254,
-        "left_inventory_not_on_retired_tab_units": 20,
-        "left_inventory_not_on_retired_tab_nameplate_mw": 1239.1
+        "left_inventory_not_on_retired_tab_units": 18,
+        "left_inventory_not_on_retired_tab_nameplate_mw": 1238.1
       },
       "us": {
-        "left_inventory_units": 1277,
+        "left_inventory_units": 1264,
         "of_which_on_retired_tab": 1102,
-        "left_inventory_not_on_retired_tab_units": 175,
-        "left_inventory_not_on_retired_tab_nameplate_mw": 3276.2
+        "left_inventory_not_on_retired_tab_units": 162,
+        "left_inventory_not_on_retired_tab_nameplate_mw": 2570.7
       }
-    },
-    "history_rows_since_2015": 3676,
-    "history_source": "EIA-860M september_generator2026.xlsx, Retired tab (copy in pipeline/static)"
+    }
   },
   "plants": {
     "snapshot_period": "2026-08",
@@ -342,7 +343,7 @@
     "removed_since_baseline": 272
   },
   "demand": {
-    "hourly_rows": 99664,
+    "hourly_rows": 99755,
     "non_positive_rows_dropped": 0,
     "months": 137,
     "min_coverage": 0.95,
@@ -512,14 +513,14 @@
       "RECO"
     ],
     "daily_min_hours": 20,
-    "days_in_daily_series": 4147,
+    "days_in_daily_series": 4151,
     "partial_months": [
       "2026-11"
     ]
   },
   "fuel": {
     "min_coverage": 0.95,
-    "hourly_rows": 569596,
+    "hourly_rows": 570364,
     "codes_unmapped": [],
     "code_names": {
       "COL": "Coal",
@@ -560,10 +561,10 @@
         "hourly_pjm_2025.json",
         "hourly_pjm_2026.json"
       ],
-      "days": 4153,
+      "days": 4157,
       "months": 137,
       "first_hour_utc": "2015-07-01T05",
-      "last_hour_utc": "2026-11-12T23",
+      "last_hour_utc": "2026-11-16T18",
       "gen_first_hour_utc": "2018-07-01T05",
       "groups": [
         "gas",
@@ -577,15 +578,15 @@
       "gen_guard": "hourly value dropped when above 5 times that fuel code's 99.9th percentile of absolute values",
       "gen_hours_dropped": 0,
       "gen_hours_dropped_examples": [],
-      "demand_hours_present": 99532,
+      "demand_hours_present": 99623,
       "gen_group_hours_present": {
-        "gas": 71543,
-        "coal": 71538,
-        "nuclear": 71538,
-        "solar": 71536,
-        "wind": 71543,
-        "hydro": 71543,
-        "other": 71543
+        "gas": 71639,
+        "coal": 71634,
+        "nuclear": 71634,
+        "solar": 71632,
+        "wind": 71639,
+        "hydro": 71639,
+        "other": 71639
       },
       "has_923": false
     },
@@ -604,10 +605,10 @@
         "hourly_us_2025.json",
         "hourly_us_2026.json"
       ],
-      "days": 4153,
+      "days": 4157,
       "months": 137,
       "first_hour_utc": "2015-07-01T08",
-      "last_hour_utc": "2026-11-13T00",
+      "last_hour_utc": "2026-11-16T18",
       "gen_first_hour_utc": "2018-07-01T05",
       "groups": [
         "gas",
@@ -633,16 +634,16 @@
           "value_mw": 36426.0
         }
       ],
-      "demand_hours_present": 99665,
+      "demand_hours_present": 99755,
       "gen_group_hours_present": {
-        "gas": 73344,
-        "coal": 73344,
-        "nuclear": 73344,
-        "solar": 73344,
-        "wind": 73344,
-        "hydro": 73344,
-        "storage": 17829,
-        "other": 73344
+        "gas": 73440,
+        "coal": 73440,
+        "nuclear": 73440,
+        "solar": 73440,
+        "wind": 73440,
+        "hydro": 73440,
+        "storage": 17925,
+        "other": 73440
       },
       "has_923": true
     }
@@ -714,7 +715,7 @@
     "removed_since_baseline": 1264
   },
   "demand_us": {
-    "hourly_rows": 99665,
+    "hourly_rows": 99755,
     "non_positive_rows_dropped": 0,
     "months": 137,
     "min_coverage": 0.95,
@@ -736,14 +737,14 @@
     "last_month": "2026-11",
     "zones": [],
     "daily_min_hours": 20,
-    "days_in_daily_series": 4153,
+    "days_in_daily_series": 4156,
     "partial_months": [
       "2026-11"
     ]
   },
   "fuel_us": {
     "min_coverage": 0.95,
-    "hourly_rows": 712444,
+    "hourly_rows": 713980,
     "codes_unmapped": [],
     "code_names": {
       "COL": "Coal",
@@ -783,6 +784,28 @@
     },
     "first_month": "2018-07",
     "last_month": "2026-11"
+  },
+  "capgen": {
+    "pjm": {
+      "first_month": "2018-10",
+      "last_month": "2026-10",
+      "windows": 8,
+      "units_skipped": {
+        "no_online_date": 0,
+        "no_capacity": 11,
+        "pumped_storage_excluded_from_us_hydro": 0
+      }
+    },
+    "us": {
+      "first_month": "2015-01",
+      "last_month": "2026-08",
+      "windows": 11,
+      "units_skipped": {
+        "no_online_date": 0,
+        "no_capacity": 43,
+        "pumped_storage_excluded_from_us_hydro": 150
+      }
+    }
   },
   "bulk930": {
     "files": [
@@ -927,7 +950,7 @@
     },
     "us": "sum of balancing authorities, hours with >=90% of usual reporters",
     "us_overlap_ratio_median": 1.0,
-    "written_at_utc": "2026-11-13T01:44:15+00:00",
+    "written_at_utc": "2026-11-16T19:45:55+00:00",
     "files_present": [
       "bulk930_demand_hourly.csv.gz",
       "bulk930_demand_us_hourly.csv.gz",
@@ -935,7 +958,7 @@
       "bulk930_fuel_us_hourly.csv.gz"
     ]
   },
-  "built_at_utc": "2026-11-13T01:44:26+00:00",
+  "built_at_utc": "2026-11-16T19:46:11+00:00",
   "window_start": "2022-11-30",
   "baseline_window": [
     "2021-11",
@@ -1007,27 +1030,5 @@
     },
     "license": "ODbL 1.0 (derived from OpenStreetMap contributors)"
   },
-  "synthetic": false,
-  "capgen": {
-    "pjm": {
-      "first_month": "2018-10",
-      "last_month": "2026-10",
-      "windows": 8,
-      "units_skipped": {
-        "no_online_date": 0,
-        "no_capacity": 11,
-        "pumped_storage_excluded_from_us_hydro": 0
-      }
-    },
-    "us": {
-      "first_month": "2015-01",
-      "last_month": "2026-08",
-      "windows": 11,
-      "units_skipped": {
-        "no_online_date": 0,
-        "no_capacity": 43,
-        "pumped_storage_excluded_from_us_hydro": 150
-      }
-    }
-  }
+  "synthetic": false
 }

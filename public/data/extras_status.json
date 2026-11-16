@@ -1,0 +1,15 @@
+{
+ "retrieved_at_utc": "2026-11-16T19:46:11+00:00",
+ "weather": {
+  "ok": true,
+  "rows": 6552
+ },
+ "prices": {
+  "ok": true,
+  "rows": 8400
+ },
+ "solar923": {
+  "ok": true,
+  "rows": 2988
+ }
+}
