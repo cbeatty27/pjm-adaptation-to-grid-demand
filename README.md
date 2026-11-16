@@ -1,4 +1,4 @@
-# PJM's Adaption to Grid Demand
+# PJM's Adaptation to Grid Demand
 
 A study of how the PJM Interconnection's generation and demand changed from the public release of ChatGPT (November 30, 2022) to today, alongside the locations of data centers in the IM3 atlas.
 

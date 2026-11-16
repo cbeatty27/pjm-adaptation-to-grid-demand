@@ -414,3 +414,6 @@ main { flex: 1; min-height: 0; outline: none; }
 .find__list [role=option]:hover, .find__list [aria-selected=true] { background: var(--accent-soft); }
 .find__list small { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .find__head { padding: 6px 12px 4px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.views { margin: 0 0 22px; display: inline-flex; flex-wrap: wrap; }
+.views button { font-size: 15px; padding: 9px 16px; }
+.view .step__say { min-height: 3.8em; }

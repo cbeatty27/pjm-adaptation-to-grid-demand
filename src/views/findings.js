@@ -67,15 +67,26 @@ export async function mount(root, data) {
   // capacity of PJM generators that began operating after the release month (nameplate, or net summer with 'msum')
   const WIN = ymIndex(meta.window_start.slice(0, 7));
   const winMw = (group, col = 'mw') => data.units.filter((u) => u.state_cls === 'operating' && u.online && ymIndex(u.online) > WIN && (!group || u.group === group)).reduce((a, u) => a + (u[col] || 0), 0);
-  // PJM solar output by hour of day over the latest 12 months (EIA-930 hourly, Eastern Standard Time)
-  let night = null, noon = null;
+  // Hour-by-hour picture (EIA-930 hourly): the 12 months before the release against the latest 12, for the average hour,
+  // the 100 busiest hours and the 100 quietest hours of each period. Only hours with demand and every fuel reported count.
+  let hrs = null, noon = null;
   try {
-    const y1 = Number(l.to.slice(0, 4)), hs = (await Promise.all([y1 - 1, y1].map((y) => loadHourly('pjm', y)))).filter(Boolean);
-    const from = Date.UTC(Number(l.from.slice(0, 4)), Number(l.from.slice(5, 7)) - 1, 1, 5), to = Date.UTC(y1, Number(l.to.slice(5, 7)), 1, 5);
-    const sm = new Array(24).fill(0), ct = new Array(24).fill(0);
-    hs.forEach((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`), a = h.gen_mw?.solar || []; a.forEach((v, i) => { const t = t0 + i * 36e5; if (v == null || t < from || t >= to) return; const hr = (new Date(t).getUTCHours() + 19) % 24; sm[hr] += v; ct[hr]++; }); });
-    if (ct.every((c) => c > 300)) { const avg = sm.map((v, i) => v / ct[i]); night = Math.max(0, avg[3]); noon = Math.max(...avg); }
-  } catch { /* the picture is drawn without the night bar */ }
+    const span = (w) => [Date.UTC(Number(w.from.slice(0, 4)), Number(w.from.slice(5, 7)) - 1, 1, 5), Date.UTC(Number(w.to.slice(0, 4)), Number(w.to.slice(5, 7)), 1, 5)];
+    const years = [...new Set([b, l].flatMap((w) => [Number(w.from.slice(0, 4)), Number(w.to.slice(0, 4)), Number(w.to.slice(0, 4)) + (w.to.slice(5, 7) === '12' ? 1 : 0)]))];
+    const files = (await Promise.all(years.map((y) => loadHourly('pjm', y).catch(() => null)))).filter(Boolean);
+    const keys = meta.groups.map((g) => g.key).filter((k) => files.every((h) => h.gen_mw?.[k]));
+    const rowsIn = (w) => { const [from, to] = span(w), out = []; files.forEach((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`); for (let i = 0; i < h.n; i++) { const t = t0 + i * 36e5; if (t < from || t >= to) continue; const d = h.demand_mw[i]; if (d == null) continue; const g = keys.map((k) => h.gen_mw[k][i]); if (g.some((v) => v == null)) continue; out.push({ t, d, g }); } }); return out; };
+    const mean = (rows) => ({ d: rows.reduce((a, r) => a + r.d, 0) / rows.length, g: Object.fromEntries(keys.map((k, j) => [k, rows.reduce((a, r) => a + r.g[j], 0) / rows.length])) });
+    const RB = rowsIn(b), RL = rowsIn(l);
+    if (RB.length > 8000 && RL.length > 8000 && keys.includes('solar')) {
+      const cut = (rows, n, dir) => rows.slice().sort((x, y) => dir * (y.d - x.d)).slice(0, n);
+      const diff = (x, y) => ({ d: y.d - x.d, g: Object.fromEntries(keys.map((k) => [k, y.g[k] - x.g[k]])), gen: keys.reduce((a, k) => a + y.g[k] - x.g[k], 0) });
+      hrs = { avg: diff(mean(RB), mean(RL)), top: diff(mean(cut(RB, 100, 1)), mean(cut(RL, 100, 1))), low: diff(mean(cut(RB, 100, -1)), mean(cut(RL, 100, -1))) };
+      const j = keys.indexOf('solar'), sm = new Array(24).fill(0), ct = new Array(24).fill(0);
+      RL.forEach((r) => { const hr = (new Date(r.t).getUTCHours() + 19) % 24; sm[hr] += r.g[j]; ct[hr]++; });
+      noon = Math.max(...sm.map((v, i) => v / Math.max(1, ct[i])));
+    }
+  } catch { /* pictures 5 and 6 fall back to the yearly figures */ }
   const frac = (x) => (x > 0.3 && x < 0.37 ? 'a third' : x > 0.22 && x < 0.28 ? 'a quarter' : x > 0.45 && x < 0.55 ? 'half' : `${nf0.format(100 * x)}%`);
 
   // 5 and 6. what was built against what it delivers, and what filled the gap
@@ -88,26 +99,48 @@ export async function mount(root, data) {
     if (grown) {
       const nm = gl[grown[0]], v = grown[1], sun = grown[0] === 'solar';
       const shareBuilt = geo ? (100 * winMw(grown[0])) / winMw(null) : null;
-      const items = [{ label: 'Growth in electricity use', value: need, text: gw(need), color: C.hot },
-        { label: `New ${nm}, size on paper`, value: v.d_cap_mw, text: gw(v.d_cap_mw), color: sun ? C.solarSoft : C.grey },
-        { label: 'What it delivers, averaged over day and night', value: v.d_gen_mw, text: gw(v.d_gen_mw), color: sun ? C.solar : C.ink }];
-      if (sun && night != null) items.push({ label: 'What all of PJM’s solar delivers at 3 a.m.', value: night, text: gw(night), color: C.solar });
-      steps.push({ h: sun ? `${shareBuilt > 50 ? 'Most of what PJM built was solar' : 'PJM built a lot of solar'}. It covers ${frac(v.d_gen_mw / need)} of the new demand, and none of it at night.` : `PJM built ${gw(v.d_cap_mw)} of ${nm}. On an average hour it delivers ${gw(v.d_gen_mw)}.`,
-        g: bars(items),
-        say: sun ? 'Solar is being built fast, but it cannot carry demand that never switches off.' : '',
-        cap: sun ? `A solar farm’s size is what it makes in full sun. Counting nights, clouds and winter, it averages about a fifth of that${noon != null ? `: PJM’s solar peaks near ${gw(noon)} around midday and makes nothing after dark` : ''}.${shareBuilt != null ? ` Solar was ${nf0.format(shareBuilt)}% of the new power plant capacity PJM added.` : ''}` : `A plant’s size is the most it can make. Averaged over the year, new ${nm} delivered ${nf0.format((100 * v.d_gen_mw) / v.d_cap_mw)}% of that.`,
-        proof: proofLink });
+      const pair = (dmw, smw, extra = []) => bars([{ label: 'Growth in electricity use', value: Math.max(dmw, 0), text: plus(dmw), color: C.hot }, { label: `Extra power from ${nm}`, value: Math.max(smw, 0), text: plus(smw), color: sun ? C.solar : C.ink }, ...extra], { max: hrs ? Math.max(hrs.top.d, v.d_cap_mw) : null });
+      const onPaper = { label: `New ${nm}, size on paper`, value: v.d_cap_mw, text: gw(v.d_cap_mw), color: sun ? C.solarSoft : C.grey };
+      if (sun && hrs) {
+        steps.push({ h: 'Solar helps on the busiest afternoons. It does almost nothing overnight.',
+          views: [
+            { label: 'Average hour', g: pair(hrs.avg.d, hrs.avg.g.solar, [onPaper]), say: `Across the whole year, new solar covers ${frac(hrs.avg.g.solar / hrs.avg.d)} of the growth: ${gw(v.d_cap_mw)} on paper delivers ${gw(hrs.avg.g.solar)}.` },
+            { label: 'Busiest 100 hours', g: pair(hrs.top.d, hrs.top.g.solar), say: `When the grid is most strained, usually hot afternoons, solar covers ${frac(hrs.top.g.solar / hrs.top.d)} of the growth.` },
+            { label: 'Quietest 100 hours', g: pair(hrs.low.d, hrs.low.g.solar), say: `In the quietest hours, mostly overnight, demand is still up ${gw(hrs.low.d)}, and solar adds ${hrs.low.g.solar < 50 ? 'nothing' : hrs.low.g.solar < 300 ? `almost nothing (${gw(hrs.low.g.solar)})` : gw(hrs.low.g.solar)}.` },
+          ],
+          cap: `Solar was ${nf0.format(shareBuilt)}% of the new power plant capacity PJM added. A solar farm’s size is what it makes in full sun${noon != null ? `; PJM’s solar now peaks near ${gw(noon)} around midday` : ''}. The busiest and quietest hours are the 100 highest-demand and 100 lowest-demand hours of each 12-month period.`,
+          proof: proofLink });
+      } else {
+        steps.push({ h: `PJM built ${gw(v.d_cap_mw)} of ${nm}. On an average hour it delivers ${gw(v.d_gen_mw)}.`,
+          g: bars([{ label: 'Growth in electricity use', value: need, text: gw(need), color: C.hot }, onPaper, { label: 'What it delivers, averaged over day and night', value: v.d_gen_mw, text: gw(v.d_gen_mw), color: sun ? C.solar : C.ink }]),
+          cap: `A plant’s size is the most it can make. Averaged over the year, new ${nm} delivered ${nf0.format((100 * v.d_gen_mw) / v.d_cap_mw)}% of that.`,
+          proof: proofLink });
+      }
     }
     const r = Object.entries(st).map(([g2, v]) => { const cf0 = cg.baseline.groups[g2]?.cf; return cf0 == null ? null : { g: g2, use: v.d_gen_mw - v.d_cap_mw * cf0, cap: v.d_cap_mw * cf0, cf0, cf1: cg.windows[cg.windows.length - 1].groups[g2]?.cf }; }).filter(Boolean).sort((a, c) => c.use - a.use)[0];
     if (r && r.use > 0) {
       const nm = gl[r.g], coal = st.coal?.d_cap_mw, isGas = r.g === 'gas';
       const opened = winMw(r.g, 'msum'), closed = (data.retired || []).filter((x) => x.pjm && x.group === r.g).reduce((a, x) => a + (x.mw || 0), 0);
       const where = geo && geo.gasTop.length === 2 && isGas ? `, nearly all of the new ones in ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}` : '';
+      if (hrs && isGas) {
+        const d = hrs.avg, lab = { gas: 'Natural gas', solar: 'Solar', wind: 'Wind', nuclear: 'Nuclear', hydro: 'Hydro', coal: 'Coal', other: 'Other sources' };
+        const less = d.d - d.gen; // demand grew more than generation: PJM sold less to its neighbors
+        const ups = [...Object.entries(d.g).filter(([, x]) => x >= 50).map(([k, x]) => ({ k, x, label: lab[k] || k })), ...(less >= 50 ? [{ k: 'less', x: less, label: 'Sold less to neighboring grids' }] : [])].sort((a, c) => c.x - a.x);
+        const downs = [...Object.entries(d.g).filter(([, x]) => x <= -50).map(([k, x]) => ({ k, x, label: lab[k] || k })), ...(less <= -50 ? [{ k: 'less', x: less, label: 'Sold more to neighboring grids' }] : [])].sort((a, c) => a.x - c.x);
+        const gap = d.d - downs.reduce((a, r) => a + r.x, 0);
+        const col = (k) => ({ gas: C.gas, solar: C.solar }[k] || C.grey);
+        steps.push({ h: `What is picking up the slack? ${ups.slice(0, 2).map((r) => (r.k === 'gas' ? 'Gas' : r.label)).join(' first, then ').replace(/, then (\w)/, (m, c) => `, then ${c.toLowerCase()}`)}.`,
+          g: bars([{ label: 'Gap to fill', value: gap, text: gw(gap), color: C.hot }, ...ups.map((r) => ({ label: r.label, value: r.x, text: plus(r.x), color: col(r.k) }))]),
+          say: `PJM had to find ${gw(gap)}: ${gw(d.d)} of new demand${downs.length ? `, plus ${gw(downs[0].x)} that ${downs[0].label.toLowerCase()} no longer supplies` : ''}. Gas covered ${nf0.format((100 * d.g.gas) / gap)}% of it, most of that from plants built years ago.`,
+          cap: `Change in average power, the latest 12 months against the 12 before the release. Of the extra gas, ${gw(r.use)} came from existing plants running more (${nf0.format(100 * r.cf0)}% of their limit before, ${nf0.format(100 * r.cf1)}% now) and ${gw(r.cap)} from the fleet growing: PJM opened ${gw(opened)} of gas plants and closed ${gw(closed)}${where}.${d.g.other >= 50 ? ' “Other sources” is EIA’s catch-all category (oil, batteries and unlabelled fuels); its rise may partly reflect how plants are labelled.' : ''}`,
+          proof: (host) => [generationTrendFigure(host, { meta, ex, scope: 'PJM' }), ...(grown ? [] : proofLink(host))] });
+      } else {
       steps.push({ h: `What is picking up the slack? Old ${isGas ? 'gas' : nm} plants, running harder.`,
         g: bars([{ label: `From ${isGas ? 'gas' : nm} plants that already existed, running more`, value: r.use, text: `${plus(r.use)}`, color: C.gas }, { label: `From new ${isGas ? 'gas' : nm} plants, after subtracting closed ones`, value: r.cap, text: `${plus(r.cap)}`, color: C.grey }]),
         say: opened > 0 && closed > 0 ? `PJM is barely building new ${isGas ? 'gas' : nm} plants. The gap is filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.` : `The gap is being filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.`,
         cap: `Both bars are extra power actually delivered on an average hour, not plant size. Since the release PJM opened ${gw(opened)} of ${isGas ? 'gas' : nm} plants (size on paper) and closed ${gw(closed)}${where}, so the fleet barely grew, and a ${isGas ? 'gas' : nm} plant delivers about ${nf0.format(100 * r.cf0)}% of its size on average. Meanwhile the existing fleet went from running at ${nf0.format(100 * r.cf0)}% of its limit to ${nf0.format(100 * r.cf1)}%.${coal < 0 ? ` Over the same time, ${gw(coal)} of coal plants closed.` : ''}`,
         proof: (host) => [generationTrendFigure(host, { meta, ex, scope: 'PJM' }), ...(grown ? [] : proofLink(host))] });
+      }
     }
   }
 
@@ -115,7 +148,7 @@ export async function mount(root, data) {
     <header class="hero">
       <h2>${sped ? 'Electricity use was flat for years. Then it started climbing.' : `Electricity use is ${Math.abs(up).toFixed(0)}% ${up >= 0 ? 'higher' : 'lower'} than before ChatGPT.`}</h2>
       <p>PJM runs the power grid for 13 states and Washington, D.C. Since ChatGPT came out in November 2022, electricity use there is <strong>${up >= 0 ? 'up' : 'down'} ${Math.abs(up).toFixed(0)}%</strong>. Here is what changed, in ${steps.length + 1} pictures.</p>
-      <p class="hero__gw"><b>1 GW</b> (gigawatt) is a measure of power: about what ${homes(1000)} average American homes use at once, or one large nuclear reactor. The growth since ChatGPT is ${gw(l.avg_mw - b.avg_mw)}, about ${homes(l.avg_mw - b.avg_mw)} homes’ worth.</p>
+      <p class="hero__gw"><b>1 GW</b> (gigawatt) is a measure of power: about what ${homes(1000)} average American homes use at once, or one large nuclear reactor. The growth since ChatGPT’s release is ${gw(l.avg_mw - b.avg_mw)}, about ${homes(l.avg_mw - b.avg_mw)} homes’ worth.</p>
     </header>
     <section class="step step--hero">
       <span class="step__n" aria-hidden="true">1</span>
@@ -128,8 +161,9 @@ export async function mount(root, data) {
     ${steps.map((s, i) => `<section class="step">
       <span class="step__n" aria-hidden="true">${i + 2}</span>
       <h3>${esc(s.h)}</h3>
-      ${s.g}
-      ${s.say ? `<p class="step__say">${esc(s.say)}</p>` : ''}
+      ${s.views ? `<div class="seg views" role="group" aria-label="Which hours">${s.views.map((v, j) => `<button type="button" data-view="${j}" aria-pressed="${j === 0}">${esc(v.label)}</button>`).join('')}</div>
+      ${s.views.map((v, j) => `<div class="view" data-pane="${j}"${j ? ' hidden' : ''}>${v.g}<p class="step__say">${esc(v.say)}</p></div>`).join('')}` : `${s.g}
+      ${s.say ? `<p class="step__say">${esc(s.say)}</p>` : ''}`}
       <p class="step__cap">${esc(s.cap)}</p>
       ${s.proof ? `<details class="proof" data-proof="${i + 1}"><summary>Show the full chart and how it was checked</summary><div></div></details>` : ''}
       ${s.link ? `<a class="go" href="${s.link[0]}">${esc(s.link[1])}</a>` : ''}
@@ -157,6 +191,13 @@ export async function mount(root, data) {
     splitLabel: 'ChatGPT released', ghostLabel: 'Earlier trend',
     aria: `Average electricity use in PJM over 12 months: about ${nf0.format(b.avg_mw / 1000)} gigawatts before the release of ChatGPT and ${nf0.format(l.avg_mw / 1000)} gigawatts now`,
   }));
+
+  root.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-view]'); if (!btn) return;
+    const sec = btn.closest('.step');
+    sec.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));
+    sec.querySelectorAll('[data-pane]').forEach((x) => { x.hidden = x.dataset.pane !== btn.dataset.view; });
+  });
 
   // the evidence, built only when someone opens it
   const proofs = [(host) => [demandTrendFigure(host, { demand, scope: 'PJM', series: 'respondent PJM' })], ...steps.map((s) => s.proof)];
