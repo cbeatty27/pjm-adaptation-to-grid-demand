@@ -73,3 +73,10 @@ export function loadHourly(scope, year) {
   hrCache[k] ??= get(`hourly_${scope}_${year}.json`, true);
   return hrCache[k];
 }
+
+// Planned generators (EIA-860M Planned tab); null when the data build has none.
+let plannedCache;
+export function loadPlanned() {
+  plannedCache ??= get('planned.json', true).then((o) => (o ? { meta: o.meta, units: unpack(o) } : null)).catch(() => null);
+  return plannedCache;
+}

@@ -1,0 +1,8 @@
+{
+ "source": "EIA-860M workbook september_generator2026.xlsx",
+ "sheet": "Planned",
+ "header_row": 2,
+ "rows": 2358,
+ "sha256": "bcef74e1af991680731aeecfda967f5950db4ce739bb584edd8b8774c7e6da17",
+ "page": "https://www.eia.gov/electricity/data/eia860m/"
+}

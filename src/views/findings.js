@@ -4,7 +4,7 @@ import { TIME } from '../lib/fuels.js';
 import { Chart, GRID, table, simple, yieldFigure, dem } from '../lib/figs.js';
 import { demandTrendFigure, loadShapeFigure, generationTrendFigure, capacityLinkFigure, complete } from '../lib/trendfigs.js';
 import { trendFit, rolling12, RELEASE } from '../lib/stats.js';
-import { loadExplorer, loadHourly } from '../lib/data.js';
+import { loadExplorer, loadHourly, loadPlanned } from '../lib/data.js';
 import { bars, pairs, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
 
@@ -141,6 +141,24 @@ export async function mount(root, data) {
         cap: `Both bars are extra power actually delivered on an average hour, not plant size. Since the release PJM opened ${gw(opened)} of ${isGas ? 'gas' : nm} plants (size on paper) and closed ${gw(closed)}${where}, so the fleet barely grew, and a ${isGas ? 'gas' : nm} plant delivers about ${nf0.format(100 * r.cf0)}% of its size on average. Meanwhile the existing fleet went from running at ${nf0.format(100 * r.cf0)}% of its limit to ${nf0.format(100 * r.cf1)}%.${coal < 0 ? ` Over the same time, ${gw(coal)} of coal plants closed.` : ''}`,
         proof: (host) => [generationTrendFigure(host, { meta, ex, scope: 'PJM' }), ...(grown ? [] : proofLink(host))] });
       }
+    }
+  }
+
+  // 7. what is planned (EIA-860M Planned tab, units EIA lists under PJM)
+  const planned = await loadPlanned();
+  if (planned) {
+    const P = planned.units.filter((u) => u.pjm), building = new Set(['U', 'V', 'TS']);
+    const tot = (g, on) => P.filter((u) => u.group === g && building.has(u.status) === on).reduce((a, u) => a + (u.mw || 0), 0);
+    const lab = { gas: 'Natural gas', solar: 'Solar', wind: 'Wind', storage: 'Batteries', nuclear: 'Nuclear', coal: 'Coal', hydro: 'Hydro', other: 'Other' };
+    const rows = Object.keys(lab).map((g) => ({ g, name: lab[g], a: tot(g, true), b: tot(g, false) })).filter((r) => r.a + r.b >= 500).sort((x, y) => (y.g === 'gas') - (x.g === 'gas') || y.a + y.b - (x.a + x.b));
+    const gas = rows.find((r) => r.g === 'gas'), all = P.reduce((a, u) => a + (u.mw || 0), 0);
+    const yrs = P.map((u) => u.online).filter(Boolean).sort(), gasYrs = P.filter((u) => u.group === 'gas' && u.online && (u.mw || 0) >= 100).map((u) => u.online).sort();
+    if (rows.length && gas) {
+      const gwP = (v) => (v < 50 ? `${nf0.format(v)} MW` : gw(v));
+      steps.push({ h: gas.a < 0.05 * gas.b ? `What is coming? ${gw(gas.a + gas.b)} of gas is planned. Almost none is being built yet.` : `What is coming? ${gw(gas.a + gas.b)} of gas is planned, ${gw(gas.a)} of it under construction.`,
+        g: pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey }),
+        say: `New gas is on paper, not on the ground: ${gwP(gas.a)} under construction${gasYrs.length ? `, and the large plants are not due before ${ymLabel(gasYrs[0]).split(' ').pop()}` : ''}. What is actually being built is solar and wind.`,
+        cap: `Power plants that owners have reported to the government as planned in PJM: ${gw(all)} in total, due between ${ymLabel(yrs[0])} and ${ymLabel(yrs[yrs.length - 1])}. Sizes are on paper, and planned projects are often delayed or cancelled.` });
     }
   }
 
