@@ -96,16 +96,15 @@ export async function mountMap(root, data, opt) {
           <h2 id="sumTitle"></h2>
           <div class="side__big num"><span id="sumMw"></span><small>GW</small></div>
           <p class="side__sub" id="sumCtx"></p>
-          <p class="side__sub" id="sumSub"></p>
           <ul class="fuelrows" id="fuelRows"></ul>
           <p class="side__sub" id="sumRet"></p>
         </section>
         <section class="side__section">
-          <h2>Show on the map</h2>
+          <h2>Show</h2>
           <div class="toggles">
             <label class="check"><input type="checkbox" id="lyDc" checked><span>${dcGlyph('building')} Data centers</span></label>
-            ${retired.length || opt.retired ? `<label class="check"><input type="checkbox" id="lyRet" checked><span><i class="ringkey"></i> Power plants that closed</span></label>` : ''}
-            <label class="check"><input type="checkbox" id="lyFleet"><span><i class="dotkey"></i> Power plants built before ChatGPT</span></label>
+            ${retired.length || opt.retired ? `<label class="check"><input type="checkbox" id="lyRet" checked><span><i class="ringkey"></i> Closed power plants</span></label>` : ''}
+            <label class="check"><input type="checkbox" id="lyFleet"><span><i class="dotkey"></i> Older power plants</span></label>
           </div>
           <details class="fineprint"><summary>More options and notes</summary>
             <p>Data center record types (from IM3):</p>
@@ -290,14 +289,14 @@ export async function mountMap(root, data, opt) {
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
       sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : (p(G.lead.sqft, G.tSq) > 50 ? `Most data centers are in ${esc(stateName(G.lead.s))}. Most new power plants are not.` : `${esc(stateName(G.lead.s))} has the most data centers. ${esc(stateName(G.builder.s))} got the most new power plants.`)}</h2>
-        <p class="geo__how">${dcGlyph('building')} Squares are data centers mapped in the IM3 Data Center Atlas. <i class="dotkey" style="opacity:1"></i> Circles are power plants that opened since ChatGPT’s release (EIA), colored by fuel.</p>
-        <div class="geo__go" role="group" aria-label="Look closer">
-          <button type="button" id="geoZoom"><b>${esc(G.hub.name)}, ${esc(G.hub.st)}</b><span>The largest data center building footprint of any county. New gas plants within 100 km: ${nf0.format(G.near.gas)} MW.</span></button>
-          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><b>${esc(stateName(G.builder.s))}</b><span>${nf0.format(p(G.builder.add, G.tAdd))}% of the new power plants${G.gasTop.length === 2 && G.tGas > 0 && (G.gasTop[0].gas + G.gasTop[1].gas) / G.tGas > 0.95 && G.gasTop.some((r) => r.s === G.builder.s) ? `, and with ${esc(stateName(G.gasTop.find((r) => r.s !== G.builder.s)?.s || G.gasTop[1].s))} nearly all of the new gas` : ''}.</span></button>` : ''}
-          <button type="button" id="geoAll"><b>${US ? 'The whole U.S.' : 'All of PJM'}</b><span>Zoom back out.</span></button>
+        <p class="geo__key"><span>${dcGlyph('building')} Data center</span><span><i class="dotkey" style="opacity:1"></i> New power plant</span></p>
+        <div class="geo__tiles" role="group" aria-label="Look closer">
+          <button type="button" id="geoZoom"><em>${esc(G.hub.name.replace(/ County$/, ''))}, ${esc(G.hub.st)}</em><b>${nf0.format(G.near.gas)} MW</b><span>of new gas plants nearby</span></button>
+          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><em>${esc(stateName(G.builder.s))}</em><b>${nf0.format(p(G.builder.add, G.tAdd))}%</b><span>of all new power plants</span></button>` : ''}
         </div>
-        <p class="geo__basis">“Data centers” here means the ground area of data center buildings, in square feet, added up by state${US ? '' : ' for the PJM states only'}. It is not how much power they use: the atlas has no power figures and no opening dates. <a href="#/findings">See the shares in the story.</a></p>
+        <button type="button" class="geo__out" id="geoAll">Zoom back out</button>
         <details class="fineprint"><summary>About these numbers</summary>
+          <p>“Data centers” here means the ground area of data center buildings, in square feet, added up by state${US ? '' : ' for the PJM states only'}. It is not how much power they use: the atlas has no power figures and no opening dates.</p>
           <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${rows.map((r) => `${esc(r.name)}: ${r.aText} of the data center building footprint and ${r.bText} of new power plant capacity.`).join(' ')} ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
           <p>Floor space is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. New power plants are EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window.</p></details>`;
       const side = root.querySelector('.mapview__side');
@@ -322,16 +321,15 @@ export async function mountMap(root, data, opt) {
       ? `New power plants, Dec 2022 to ${ymLabel(indexYm(T))}`
       : `New power plants in ${ymLabel(indexYm(T))}`;
     $('sumMw').textContent = (mwTot / 1000).toFixed(mwTot >= 100 ? 1 : 2);
-    $('sumCtx').textContent = mwTot >= 500 ? `At full output, enough for about ${homes(mwTot)} homes. Most plants run well below full output.` : '';
-    $('sumSub').textContent = `${nf0.format(nTot)} generators. Tap a fuel to hide or show it.`;
+    $('sumCtx').textContent = mwTot >= 500 ? `Enough for about ${homes(mwTot)} homes, if every plant ran flat out.` : '';
     if (opt.retired) {
       const rr = (opt.retired || []).filter((r) => r.ret && ymIndex(r.ret) > WIN && (state.mode === 'cum' ? ymIndex(r.ret) <= T : ymIndex(r.ret) === T) && state.fuels.has(r.group));
-      $('sumRet').innerHTML = `Closed in the same period: <b>${(sum(rr.map((r) => r.mw)) / 1000).toFixed(1)} GW</b>`;
+      $('sumRet').innerHTML = `Closed: <b>${(sum(rr.map((r) => r.mw)) / 1000).toFixed(1)} GW</b>`;
     }
     // Bars show each fuel's share of all capacity in the period (not relative to the largest fuel, which would
     // pin the biggest fuel at full width), so they move as the slider moves.
     const allMw = Math.max(1, sum(groups.map((g) => tot[g.key].mw)));
-    $('fuelRows').innerHTML = groups.map((g) => { const sh = (100 * tot[g.key].mw) / allMw; return `<li><button class="fuelrow" type="button" data-fuel="${g.key}" aria-pressed="${state.fuels.has(g.key)}">
+    $('fuelRows').innerHTML = groups.filter((g) => tot[g.key].mw > 0 || !state.fuels.has(g.key)).map((g) => { const sh = (100 * tot[g.key].mw) / allMw; return `<li><button class="fuelrow" type="button" data-fuel="${g.key}" aria-pressed="${state.fuels.has(g.key)}">
         <i style="background:${FUEL_COLOR[g.key]}"></i><span>${esc(g.label)}</span>
         <span class="bar" title="${sh.toFixed(1)}% of the capacity shown"><b style="width:${sh}%;background:${FUEL_COLOR[g.key]}"></b></span>
         <span class="v">${(tot[g.key].mw / 1000).toFixed(1)}</span><span class="pc">${sh >= 0.5 ? Math.round(sh) : sh > 0 ? '<1' : 0}%</span></button></li>`; }).join('');

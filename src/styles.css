@@ -383,3 +383,13 @@ main { flex: 1; min-height: 0; outline: none; }
 .maplegend { background: #fff; }
 @media (max-width: 640px) { .bars__track { --room: 180px; } .pairs__bar .bars__track { --room: 70px; } }
 .bigline .halo { paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; }
+.geo__key { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -4px 0 16px; font-size: 14px; color: var(--ink-2); }
+.geo__key span { display: inline-flex; align-items: center; gap: 6px; }
+.geo__tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.geo__tiles button { text-align: left; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); cursor: pointer; }
+.geo__tiles button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.geo__tiles em { display: block; font-style: normal; font-size: 13px; font-weight: 600; color: var(--accent-ink); }
+.geo__tiles b { display: block; font-family: var(--display); font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; margin: 4px 0 2px; color: var(--ink); }
+.geo__tiles span { display: block; font-size: 13px; line-height: 1.3; color: var(--ink-2); }
+.geo__out { margin: 10px 0 0; padding: 0; border: 0; background: none; color: var(--accent-ink); font-weight: 600; font-size: 14px; cursor: pointer; }
+.geo__out:hover { text-decoration: underline; }
