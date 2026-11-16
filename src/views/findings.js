@@ -103,9 +103,9 @@ export async function mount(root, data) {
       const nm = gl[r.g], coal = st.coal?.d_cap_mw, isGas = r.g === 'gas';
       const opened = winMw(r.g, 'msum'), closed = (data.retired || []).filter((x) => x.pjm && x.group === r.g).reduce((a, x) => a + (x.mw || 0), 0);
       const where = geo && geo.gasTop.length === 2 && isGas ? `, nearly all of the new ones in ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}` : '';
-      steps.push({ h: opened > 0 && closed > 0 ? `Is PJM building ${isGas ? 'gas' : nm} plants? Barely. The old ones are running harder.` : `So ${nm} plants that already existed are running harder.`,
-        g: bars([{ label: `${isGas ? 'Gas' : nm} plants opened`, value: opened, text: `+${gw(opened)}`, color: C.grey }, { label: `${isGas ? 'Gas' : nm} plants closed`, value: closed, text: `−${gw(closed)}`, color: C.grey }, ...(coal < 0 ? [{ label: 'Coal plants closed', value: -coal, text: `−${gw(coal)}`, color: C.grey }] : []), { label: `Extra power from ${isGas ? 'gas' : nm} plants that already existed`, value: r.use, text: `${plus(r.use)} on average`, color: C.gas }]),
-        say: `The gap is being filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.`,
+      steps.push({ h: `What is picking up the slack? Old ${isGas ? 'gas' : nm} plants, running harder.`,
+        g: bars([{ label: `Extra power from ${isGas ? 'gas' : nm} plants that already existed`, value: r.use, text: `${plus(r.use)} on average`, color: C.gas }, { label: `${isGas ? 'Gas' : nm} plants opened`, value: opened, text: `+${gw(opened)}`, color: C.grey }, { label: `${isGas ? 'Gas' : nm} plants closed`, value: closed, text: `−${gw(closed)}`, color: C.grey }, ...(coal < 0 ? [{ label: 'Coal plants closed', value: -coal, text: `−${gw(coal)}`, color: C.grey }] : [])]),
+        say: opened > 0 && closed > 0 ? `PJM is barely building new ${isGas ? 'gas' : nm} plants. The gap is filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.` : `The gap is being filled by burning more ${isGas ? 'gas' : nm} in plants built years ago.`,
         cap: `Since the release PJM opened ${gw(opened)} of ${isGas ? 'gas' : nm} plants and closed ${gw(closed)}${where}. Meanwhile the existing ${isGas ? 'gas' : nm} fleet went from running at ${nf0.format(100 * r.cf0)}% of its limit to ${nf0.format(100 * r.cf1)}%.`,
         proof: (host) => [generationTrendFigure(host, { meta, ex, scope: 'PJM' }), ...(grown ? [] : proofLink(host))] });
     }
@@ -118,6 +118,8 @@ export async function mount(root, data) {
       <p class="hero__gw"><b>1 GW</b> (gigawatt) is a measure of power: about what ${homes(1000)} average American homes use at once, or one large nuclear reactor. The growth since ChatGPT is ${gw(l.avg_mw - b.avg_mw)}, about ${homes(l.avg_mw - b.avg_mw)} homes’ worth.</p>
     </header>
     <section class="step step--hero">
+      <span class="step__n" aria-hidden="true">1</span>
+      <h3>${sped ? `Electricity use is climbing ${pct((100 * f.post) / b.avg_mw).replace('+', '')} a year, after years of no growth.` : 'Electricity use before and after ChatGPT.'}</h3>
       <div id="heroLine"></div>
       <p class="step__cap">Average electricity use in PJM, smoothed over 12 months, in gigawatts (GW). The dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading. Touch the line to read any month.</p>
       <details class="proof" data-proof="0"><summary>Show the full chart and how it was checked</summary><div></div></details>
