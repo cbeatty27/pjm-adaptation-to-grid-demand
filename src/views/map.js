@@ -211,7 +211,8 @@ export async function mountMap(root, data, opt) {
     $('maplegend').innerHTML = `<div class="ml__t">Circles are power plants. Bigger circle, bigger plant (MW).</div>
       <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">${parts.join('')}</svg>
       <ul class="ml__fuels">${groups.map((g) => `<li><i style="background:${FUEL_COLOR[g.key]}"></i>${esc(g.label)}</li>`).join('')}</ul>
-      <p class="ml__n">${dcGlyph('building')}Data center${hasRet ? '<i class="ring" style="margin-left:14px"></i>Plant that closed' : ''}</p>`;
+      <p class="ml__n">${dcGlyph('building')}Data center${hasRet ? '<i class="ring" style="margin-left:14px"></i>Plant that closed' : ''}</p>
+      <p class="ml__n">Data centers: IM3 atlas. Power plants: EIA.</p>`;
   }
   drawLegend();
   if (US) map.on('zoom', drawLegend);
@@ -289,14 +290,15 @@ export async function mountMap(root, data, opt) {
       const sec = document.createElement('section');
       sec.className = 'side__section geo';
       sec.innerHTML = `<h2 class="geo__head">${same ? `${esc(stateName(G.lead.s))} has the most data centers and the most new power plants.` : (p(G.lead.sqft, G.tSq) > 50 ? `Most data centers are in ${esc(stateName(G.lead.s))}. Most new power plants are not.` : `${esc(stateName(G.lead.s))} has the most data centers. ${esc(stateName(G.builder.s))} got the most new power plants.`)}</h2>
-        <p class="geo__how">${dcGlyph('building')} Squares are data centers. <i class="dotkey" style="opacity:1"></i> Circles are power plants opened since ChatGPT’s release, colored by fuel.</p>
-        ${pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' })}
+        <p class="geo__how">${dcGlyph('building')} Squares are data centers mapped in the IM3 Data Center Atlas. <i class="dotkey" style="opacity:1"></i> Circles are power plants that opened since ChatGPT’s release (EIA), colored by fuel.</p>
+        ${pairs(rows, { aLabel: `Share of ${US ? 'U.S.' : 'PJM-state'} data center building footprint`, bLabel: `Share of new ${US ? 'U.S.' : 'PJM'} power plant capacity` })}
         <div class="geo__go" role="group" aria-label="Look closer">
-          <button type="button" id="geoZoom"><b>${esc(G.hub.name)}, ${esc(G.hub.st)}</b><span>The most data centers of any county. New gas plants within 100 km: ${nf0.format(G.near.gas)} MW.</span></button>
+          <button type="button" id="geoZoom"><b>${esc(G.hub.name)}, ${esc(G.hub.st)}</b><span>The largest data center building footprint of any county. New gas plants within 100 km: ${nf0.format(G.near.gas)} MW.</span></button>
           ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><b>${esc(stateName(G.builder.s))}</b><span>${nf0.format(p(G.builder.add, G.tAdd))}% of the new power plants${G.gasTop.length === 2 && G.tGas > 0 && (G.gasTop[0].gas + G.gasTop[1].gas) / G.tGas > 0.95 && G.gasTop.some((r) => r.s === G.builder.s) ? `, and with ${esc(stateName(G.gasTop.find((r) => r.s !== G.builder.s)?.s || G.gasTop[1].s))} nearly all of the new gas` : ''}.</span></button>` : ''}
           <button type="button" id="geoAll"><b>${US ? 'The whole U.S.' : 'All of PJM'}</b><span>Zoom back out.</span></button>
         </div>
         ${same ? '' : `<p class="geo__take">${esc(stateName(G.builder.s))}${G.top[1]?.s === G.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${esc(stateName(G.lead.s))}, ${G.top[1] && G.lead.sqft > 2 * G.top[1].sqft ? 'far ahead' : 'first'} in data centers, got ${nf0.format(p(G.lead.add, G.tAdd))}%.</p>`}
+        <p class="geo__basis">“Data centers” here means the ground area of data center buildings, in square feet, added up by state${US ? '' : ' for the PJM states only'}. It is not how much power they use: the atlas has no power figures and no opening dates.</p>
         <details class="fineprint"><summary>About these numbers</summary>
           <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
           <p>Floor space is IM3 building footprints${US ? '' : ' in states where EIA lists at least 1,000 MW of PJM generators (whole states, though PJM covers only part of some)'}; IM3 gives no dates and no power use. New power plants are EIA nameplate MW of ${US ? '' : 'PJM '}generators that began operating in the window.</p></details>`;

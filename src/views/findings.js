@@ -59,8 +59,8 @@ export async function mount(root, data) {
     const rows = (same ? geo.top.slice(0, 2) : [geo.lead, geo.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, geo.tSq), b: p(r.add, geo.tAdd), aText: `${nf0.format(p(r.sqft, geo.tSq))}%`, bText: `${nf0.format(p(r.add, geo.tAdd))}%` }));
     steps.push({ h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
       say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
-      g: pairs(rows, { aLabel: 'Data center floor space', bLabel: 'New power plants' }),
-      cap: `Each state's share of the PJM states' total.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
+      g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity' }),
+      cap: `Data centers are measured by the ground area of their buildings in the IM3 Data Center Atlas, added up for the PJM states. It is not their power use, which the atlas does not report.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
       link: ['#/maps', 'See it on the map'] });
   }
 

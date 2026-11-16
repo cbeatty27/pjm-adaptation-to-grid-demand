@@ -376,3 +376,4 @@ main { flex: 1; min-height: 0; outline: none; }
 .geo__how { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); margin: -6px 0 16px; }
 .geo__how svg, .geo__how i { vertical-align: -2px; margin-right: 2px; }
 .geo__take { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 16px 0 0; padding-left: 12px; border-left: 4px solid var(--accent); }
+.geo__basis { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin: 14px 0 0; padding: 10px 12px; background: var(--paper); border-radius: 10px; }
