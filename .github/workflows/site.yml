@@ -56,6 +56,7 @@ jobs:
           python -m pipeline.build_datacenters
           python -m pipeline.build_site_data
           python -m pipeline.build_planned
+          python -m pipeline.fetch_extras
           python -m pipeline.validate
 
       - name: Commit refreshed data
