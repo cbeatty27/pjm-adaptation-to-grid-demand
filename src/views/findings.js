@@ -86,7 +86,7 @@ export async function mount(root, data) {
     if (va && va.d > 0) {
       const rowsP = [va, oh].filter(Boolean);
       const gap = va.d - va.g;
-      steps.push({ key: 'where', h: gap > va.d / 3 ? `Virginia makes only part of its new power. The rest comes in over power lines.` : `Virginia is making most of its new power itself.`,
+      steps.push({ key: 'where', h: gap > va.d / 3 ? `The biggest new demand is far from the new power.` : `Most new power is being made close to the new demand.`,
         g: pairs(rowsP.map((r) => ({ name: r.name, a: Math.max(r.d, 0), b: Math.max(r.g, 0), aText: plus(r.d), bText: plus(r.g) })), { aLabel: 'Growth in electricity use', bLabel: 'Growth in power made there', aColor: C.hot, bColor: C.ink }),
         say: `Demand in Virginia grew ${gw(va.d)}. Power made in Virginia grew ${gw(va.g)}: about ${gw(Math.min(va.n, va.g))} from new plants and the rest from existing plants running harder. The other ${gw(gap)} is carried in from elsewhere on the grid.`,
         cap: `Average power, the 12 months to ${ymLabel(W1[11])} against the 12 months to ${ymLabel(W0[11])}. Electricity use is by utility territory: Dominion for Virginia; AEP, ATSI, Dayton and Duke for Ohio. Power made is all plants in the state, as reported to EIA. Territories and states do not line up exactly, since Dominion reaches into North Carolina and AEP into neighboring states, so the comparison is approximate. The new-plant share is each plant’s size times how hard PJM’s plants of that fuel ran over the latest 12 months.${geo ? ' Loudoun County, with the most data center floor space in PJM, has had no new power plants since the release.' : ''}`,
