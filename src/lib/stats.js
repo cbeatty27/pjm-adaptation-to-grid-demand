@@ -23,13 +23,15 @@ function solve(A, b) {           // Gaussian elimination with partial pivoting; 
 const normCdf = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp((-z * z) / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
 
 // months: ['YYYY-MM'], values: numbers or null. Returns null when there is too little data on either side.
-export function trendFit(months, values, { lag = 12, brk = RELEASE } = {}) {
+// extra: optional list of further monthly inputs aligned with months (for example heating and cooling degree days);
+// months where any extra input is missing are left out. Their coefficients are returned as `extraCoef`.
+export function trendFit(months, values, { lag = 12, brk = RELEASE, extra = [] } = {}) {
   const t0 = ymNum(brk);
   const rows = [];
-  months.forEach((m, i) => { if (values[i] != null && isFinite(values[i])) rows.push({ m, y: values[i], t: (ymNum(m) - t0) / 12, s: Number(m.slice(5, 7)) - 1 }); });
+  months.forEach((m, i) => { if (values[i] != null && isFinite(values[i]) && extra.every((x) => x[i] != null && isFinite(x[i]))) rows.push({ m, y: values[i], t: (ymNum(m) - t0) / 12, s: Number(m.slice(5, 7)) - 1, x: extra.map((a) => a[i]) }); });
   const nPre = rows.filter((r) => r.t <= 0).length, nPost = rows.length - nPre;
   if (nPre < 24 || nPost < 24) return null;
-  const K = 14, xrow = (r) => { const x = new Array(K).fill(0); x[r.s] = 1; x[12] = r.t; x[13] = Math.max(0, r.t); return x; };
+  const K = 14 + extra.length, xrow = (r) => { const x = new Array(K).fill(0); x[r.s] = 1; x[12] = r.t; x[13] = Math.max(0, r.t); r.x.forEach((v, j) => { x[14 + j] = v; }); return x; };
   const X = rows.map(xrow), n = rows.length;
   const XtX = Array.from({ length: K }, () => new Array(K).fill(0)), Xty = new Array(K).fill(0);
   X.forEach((x, i) => { for (let a = 0; a < K; a++) { Xty[a] += x[a] * rows[i].y; for (let b = 0; b < K; b++) XtX[a][b] += x[a] * x[b]; } });
@@ -58,7 +60,8 @@ export function trendFit(months, values, { lag = 12, brk = RELEASE } = {}) {
   const sse = e.reduce((s, v) => s + v * v, 0);
   const r2 = 1 - sse / rows.reduce((s, r) => s + (r.y - ybar) ** 2, 0);
   const fitAt = (m, counterfactual = false) => { const t = (ymNum(m) - t0) / 12; return season[Number(m.slice(5, 7)) - 1] + pre * t + (counterfactual ? 0 : dSlope * Math.max(0, t)); };
-  return { n, nPre, nPost, sse, brk, level, pre, post, dSlope, sePre, sePost, seD, z, p, r2, lag, significant: p < 0.05, postSignificant: Math.abs(post / sePost) > 1.96, preSignificant: Math.abs(pre / sePre) > 1.96,
+  const extraCoef = beta.slice(14);
+  return { n, nPre, nPost, sse, brk, level, pre, post, dSlope, extraCoef, sePre, sePost, seD, z, p, r2, lag, significant: p < 0.05, postSignificant: Math.abs(post / sePost) > 1.96, preSignificant: Math.abs(pre / sePre) > 1.96,
     first: rows[0].m, last: rows[n - 1].m, fitAt };
 }
 

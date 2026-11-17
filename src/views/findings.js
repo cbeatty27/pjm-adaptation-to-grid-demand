@@ -4,7 +4,7 @@ import { TIME } from '../lib/fuels.js';
 import { Chart, GRID, table, simple, yieldFigure, dem } from '../lib/figs.js';
 import { demandTrendFigure, loadShapeFigure, generationTrendFigure, capacityLinkFigure, complete } from '../lib/trendfigs.js';
 import { trendFit, rolling12, RELEASE } from '../lib/stats.js';
-import { loadExplorer, loadHourly, loadPlanned } from '../lib/data.js';
+import { loadExplorer, loadHourly, loadPlanned, loadExtra } from '../lib/data.js';
 import { bars, pairs, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
 
@@ -18,6 +18,18 @@ export async function mount(root, data) {
   const b = demand.comparison.baseline, l = demand.comparison.latest;
   const mo = demand.monthly, valsD = complete(mo.avg_mw, mo.coverage);
   const f = trendFit(mo.months, valsD), fLow = trendFit(mo.months, complete(mo.min_mw, mo.coverage)), fHigh = trendFit(mo.months, complete(mo.peak_mw, mo.coverage));
+  // Weather: heating and cooling degree days (EIA Short-Term Energy Outlook, by census division), each division weighted by
+  // the share of PJM demand in the zones that sit in it over the 12 months before the release.
+  const [weather, solarCheck] = await Promise.all([loadExtra('weather'), loadExtra('solar_check')]);
+  let fW = null;
+  if (weather?.series) {
+    const DIV = { AE: 'MAC', AEP: 'ENC', AP: 'SAC', ATSI: 'ENC', BC: 'SAC', CE: 'ENC', DAY: 'ENC', DEOK: 'ENC', DOM: 'SAC', DPL: 'SAC', DUQ: 'MAC', EKPC: 'ESC', JC: 'MAC', ME: 'MAC', PE: 'MAC', PEP: 'SAC', PL: 'MAC', PN: 'MAC', PS: 'MAC', RECO: 'MAC' };
+    const wt = {};
+    Object.entries(demand.comparison.zones || {}).forEach(([z, v]) => { if (DIV[z]) wt[DIV[z]] = (wt[DIV[z]] || 0) + v.baseline.avg_mw; });
+    const tw = Object.values(wt).reduce((a, x) => a + x, 0);
+    const dd = (kind) => mo.months.map((m) => { let v = 0; for (const [k, x] of Object.entries(wt)) { const s2 = weather.series[`ZW${kind}D_${k}`]; if (!s2 || s2[m] == null) return null; v += (x / tw) * s2[m]; } return v; });
+    if (tw > 0) fW = trendFit(mo.months, valsD, { extra: [dd('H'), dd('C')] });
+  }
   const up = dem(b.avg_mw, l.avg_mw);
   const sped = f && f.significant && f.dSlope > 0;
   const steps = []; // { h, g, cap, proof?, link? }
@@ -102,13 +114,17 @@ export async function mount(root, data) {
       const pair = (dmw, smw, extra = []) => bars([{ label: 'Growth in electricity use', value: Math.max(dmw, 0), text: plus(dmw), color: C.hot }, { label: `Extra power from ${nm}`, value: Math.max(smw, 0), text: plus(smw), color: sun ? C.solar : C.ink }, ...extra], { max: hrs ? Math.max(hrs.top.d, v.d_cap_mw) : null });
       const onPaper = { label: `New ${nm}, size on paper`, value: v.d_cap_mw, text: gw(v.d_cap_mw), color: sun ? C.solarSoft : C.grey };
       if (sun && hrs) {
+        const hourRows = [
+          { name: 'Busiest 100 hours', d: hrs.top.d, sv: hrs.top.g.solar },
+          { name: 'Average hour', d: hrs.avg.d, sv: hrs.avg.g.solar },
+          { name: 'Quietest 100 hours', d: hrs.low.d, sv: hrs.low.g.solar },
+        ];
+        const solarTxt = (x) => (x < 50 ? 'none' : x < 300 ? `${nf0.format(x)} MW` : plus(x));
+        const sc = solarCheck?.first12 && solarCheck?.latest12;
         steps.push({ h: 'Solar helps on the busiest afternoons. It does almost nothing overnight.',
-          views: [
-            { label: 'Average hour', g: pair(hrs.avg.d, hrs.avg.g.solar, [onPaper]), say: `Across the whole year, new solar covers ${frac(hrs.avg.g.solar / hrs.avg.d)} of the growth: ${gw(v.d_cap_mw)} on paper delivers ${gw(hrs.avg.g.solar)}.` },
-            { label: 'Busiest 100 hours', g: pair(hrs.top.d, hrs.top.g.solar), say: `When the grid is most strained, usually hot afternoons, solar covers ${frac(hrs.top.g.solar / hrs.top.d)} of the growth.` },
-            { label: 'Quietest 100 hours', g: pair(hrs.low.d, hrs.low.g.solar), say: `In the quietest hours, mostly overnight, demand is still up ${gw(hrs.low.d)}, and solar adds ${hrs.low.g.solar < 50 ? 'nothing' : hrs.low.g.solar < 300 ? `almost nothing (${gw(hrs.low.g.solar)})` : gw(hrs.low.g.solar)}.` },
-          ],
-          cap: `Solar was ${nf0.format(shareBuilt)}% of the new power plant capacity PJM added. A solar farm’s size is what it makes in full sun${noon != null ? `; PJM’s solar now peaks near ${gw(noon)} around midday` : ''}. The busiest and quietest hours are the 100 highest-demand and 100 lowest-demand hours of each 12-month period.`,
+          g: pairs(hourRows.map((r) => ({ name: r.name, a: Math.max(r.d, 0), b: Math.max(r.sv, 0), aText: plus(r.d), bText: solarTxt(r.sv) })), { aLabel: 'Growth in electricity use', bLabel: 'Extra power from solar', aColor: C.hot, bColor: C.solar }),
+          say: `On the busiest afternoons, new solar covers ${frac(hrs.top.g.solar / hrs.top.d)} of the growth. Overnight, when demand is still up ${gw(hrs.low.d)}, it covers ${hrs.low.g.solar < 300 ? 'almost none' : frac(hrs.low.g.solar / hrs.low.d)}.`,
+          cap: `PJM added ${gw(v.d_cap_mw)} of solar on paper, ${nf0.format(shareBuilt)}% of all new power plant capacity${noon != null ? `; its solar now peaks near ${gw(noon)} around midday` : ''}. The busiest and quietest hours are the 100 highest-demand and 100 lowest-demand hours of each 12-month period.${sc ? ` PJM’s hourly figures undercount solar (they captured about ${nf0.format(100 * solarCheck.first12.share_captured)}% of plant-reported solar output in ${solarCheck.first12.from.slice(0, 4)} and ${nf0.format(100 * solarCheck.latest12.share_captured)}% recently), but the changes shown here hold when that is corrected.` : ''}`,
           proof: proofLink });
       } else {
         steps.push({ h: `PJM built ${gw(v.d_cap_mw)} of ${nm}. On an average hour it delivers ${gw(v.d_gen_mw)}.`,
@@ -155,13 +171,28 @@ export async function mount(root, data) {
     const yrs = P.map((u) => u.online).filter(Boolean).sort(), gasYrs = P.filter((u) => u.group === 'gas' && u.online && (u.mw || 0) >= 100).map((u) => u.online).sort();
     if (rows.length && gas) {
       const gwP = (v) => (v < 50 ? `${nf0.format(v)} MW` : gw(v));
-      const onPaper = pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey });
+      // one scale for both views, so switching shows how much smaller delivered power is than size on paper
+      const scaleMax = Math.max(...rows.flatMap((r) => [r.a, r.b]), f?.post || 0);
+      const onPaper = pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax });
+      // when the plants under construction are due, and the largest of them
+      const UC = P.filter((u) => building.has(u.status) && u.online);
+      const byYear = {};
+      UC.forEach((u) => { const y = u.online.slice(0, 4); byYear[y] = (byYear[y] || 0) + (u.mw || 0); });
+      const yrsUC = Object.keys(byYear).sort(), soon = yrsUC.slice(0, 2), ucTot = UC.reduce((x, u) => x + (u.mw || 0), 0);
+      const soonMw = soon.reduce((x, y) => x + byYear[y], 0);
+      const byPlant = {};
+      UC.forEach((u) => { const k = u.plant; (byPlant[k] ??= { name: u.name, st: u.state, g: u.group, mw: 0 }).mw += u.mw || 0; });
+      const big = Object.values(byPlant).sort((x, y) => y.mw - x.mw)[0];
+      const bigName = big ? big.name.replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+(Commercial\s+)?Project$/i, '').trim() : '';
+      const when = soon.length && ucTot > 0 && soonMw / ucTot > 0.8 ? ` Nearly all of it is due by the end of ${soon[soon.length - 1]}${big && big.mw >= 1000 ? `, led by ${bigName} (${gw(big.mw)})` : ''}; after that, almost nothing is being built yet.` : '';
       const head = gas.a < 0.05 * gas.b ? `What is coming? ${gw(gas.a + gas.b)} of gas is planned. Almost none is being built yet.` : `What is coming? ${gw(gas.a + gas.b)} of gas is planned, ${gw(gas.a)} of it under construction.`;
       const sayPaper = `New gas is on paper, not on the ground: ${gwP(gas.a)} under construction${gasYrs.length ? `, and the large plants are not due before ${ymLabel(gasYrs[0]).split(' ').pop()}` : ''}. What is actually being built is solar and wind.`;
       const capBase = `Power plants that owners have reported to the government as planned in PJM: ${gw(all)} in total, due between ${ymLabel(yrs[0])} and ${ymLabel(yrs[yrs.length - 1])}. Planned projects are often delayed or cancelled.`;
       // expected delivery: planned size times how hard PJM's existing plants of that fuel ran over the latest 12 months
       const cfNow = cg?.windows?.[cg.windows.length - 1]?.groups || {};
-      const exp = rows.filter((r) => cfNow[r.g]?.cf > 0).map((r) => ({ ...r, cf: cfNow[r.g].cf, ea: r.a * cfNow[r.g].cf, eb: r.b * cfNow[r.g].cf }));
+      // solar: PJM's hourly data undercounts solar, so its running rate comes from the plant-level cross-check when available
+      const cfOf = (g) => (g === 'solar' && solarCheck?.latest12?.cf_eia923 ? solarCheck.latest12.cf_eia923 : cfNow[g]?.cf);
+      const exp = rows.filter((r) => cfOf(r.g) > 0).map((r) => ({ ...r, cf: cfOf(r.g), ea: r.a * cfOf(r.g), eb: r.b * cfOf(r.g) }));
       const pace = f && f.post > 0 ? f.post : null;
       if (exp.length >= 2 && pace) {
         const ea = exp.reduce((x, r) => x + r.ea, 0), eb = exp.reduce((x, r) => x + r.eb, 0);
@@ -169,14 +200,35 @@ export async function mount(root, data) {
         const left = rows.filter((r) => !exp.some((x) => x.g === r.g)).map((r) => r.name.toLowerCase());
         steps.push({ h: `What is coming? Plants under construction would cover about ${span(ea)} of demand growth.`,
           views: [
-            { label: 'What it should deliver', g: pairs([...exp.map((r) => ({ name: r.name, a: r.ea, b: r.eb, aText: gwP(r.ea), bText: gwP(r.eb) })), { name: 'Demand', a: pace, b: 0, aText: `${plus(pace)} every year`, bText: '', hideB: true, aColor: C.hot }], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey }),
-              say: `Everything under construction should deliver about ${gw(ea)} on an average hour. Demand is growing ${gw(pace)} a year. The rest of the plan would add ${gw(eb)}, most of it gas that has not broken ground.` },
-            { label: 'Size on paper', g: onPaper, say: sayPaper },
+            { label: 'What it should deliver', g: pairs([...exp.map((r) => ({ name: r.name, a: r.ea, b: r.eb, aText: gwP(r.ea), bText: gwP(r.eb) })), { name: 'Demand', a: pace, b: 0, aText: `${plus(pace)} every year`, bText: '', hideB: true, aColor: C.hot }], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax }),
+              say: `Everything under construction should deliver about ${gw(ea)} on an average hour. Demand is growing ${gw(pace)} a year.${when}` },
+            { label: 'Size on paper', g: onPaper, say: `${sayPaper} The rest of the plan would deliver about ${gw(eb)}, most of it gas that has not broken ground.` },
           ],
-          cap: `${capBase} “What it should deliver” multiplies each plant’s size by how hard PJM’s existing plants of that fuel ran over the latest 12 months (${exp.map((r) => `${r.name.toLowerCase()} ${nf0.format(100 * r.cf)}%`).join(', ')}). New plants may run more or less than that${left.length ? `; ${left.join(' and ')} ${left.length > 1 || left[0].endsWith('s') ? 'are' : 'is'} left out because ${left.includes('batteries') ? 'batteries store power and do not make it' : 'there is no running rate to apply'}` : ''}.` });
+          cap: `${capBase} “What it should deliver” multiplies each plant’s size by how hard PJM’s existing plants of that fuel ran over the latest 12 months (${exp.map((r) => `${r.name.toLowerCase()} ${nf0.format(100 * r.cf)}%`).join(', ')}${solarCheck?.latest12?.cf_eia923 ? '; the solar rate is from plant reports, since PJM’s hourly figures undercount solar' : ''}). New plants may run more or less than that${left.length ? `; ${left.join(' and ')} ${left.length > 1 || left[0].endsWith('s') ? 'are' : 'is'} left out because ${left.includes('batteries') ? 'batteries store power and do not make it' : 'there is no running rate to apply'}` : ''}.` });
       } else {
         steps.push({ h: head, g: onPaper, say: sayPaper, cap: `${capBase} Sizes are on paper.` });
       }
+    }
+  }
+
+  // 8. who pays: average retail electricity price (revenue divided by sales) in the states that sit wholly or mostly in
+  // PJM, against the U.S., the latest 12 months against the 12 before the release. Not adjusted for inflation.
+  const prices = await loadExtra('prices');
+  if (prices?.rows?.length) {
+    const CORE = ['PA', 'NJ', 'MD', 'DE', 'DC', 'OH', 'VA', 'WV'];
+    const pm = prices.rows.map((r) => r[0]).sort(), pLast = pm[pm.length - 1];
+    const twelve = (end) => { const out = new Set(); let y = Number(end.slice(0, 4)), m = Number(end.slice(5, 7)); for (let k = 0; k < 12; k++) { out.add(`${y}-${String(m).padStart(2, '0')}`); if (--m === 0) { m = 12; y--; } } return out; };
+    const W0 = twelve(b.to), W1 = twelve(pLast);
+    const avgP = (states, sec, W) => { let rev = 0, sal = 0; prices.rows.forEach(([m, st, sc, , sales, revenue]) => { if (sc === sec && states.includes(st) && W.has(m) && sales != null && revenue != null) { rev += revenue; sal += sales; } }); return sal ? (100 * rev) / sal : null; };
+    const ch = (states, sec) => { const a = avgP(states, sec, W0), c = avgP(states, sec, W1); return a && c ? { a, c, pct: 100 * (c / a - 1) } : null; };
+    const types = [['RES', 'Households'], ['COM', 'Businesses'], ['IND', 'Industry']].map(([k, nm]) => ({ nm, pjm: ch(CORE, k), us: ch(['US'], k) })).filter((r) => r.pjm && r.us);
+    const home = types.find((r) => r.nm === 'Households');
+    if (types.length && home && home.pjm.pct > home.us.pct) {
+      const perMonth = ((home.pjm.c - home.pjm.a) / 100) * (10791 / 12);
+      steps.push({ key: 'pays', h: `Who pays? Household electricity prices in PJM’s states rose ${nf0.format(home.pjm.pct)}%. Nationally, ${nf0.format(home.us.pct)}%.`,
+        g: pairs(types.map((r) => ({ name: r.nm, a: r.pjm.pct, b: r.us.pct, aText: `+${nf0.format(r.pjm.pct)}%`, bText: `+${nf0.format(r.us.pct)}%` })), { aLabel: 'PJM’s states', bLabel: 'Whole U.S.', aColor: C.hot, bColor: C.grey }),
+        say: `For a home using the U.S. average amount of electricity, that is about $${nf0.format(perMonth)} more a month than before ChatGPT.`,
+        cap: `Average price per kilowatt-hour, the 12 months to ${ymLabel(pLast)} against the 12 months to ${ymLabel(b.to)}, not adjusted for inflation. PJM’s states here are the eight that sit wholly or mostly in PJM (${CORE.join(', ')}). Prices rise for many reasons, including natural gas prices, transmission and PJM’s capacity auction, so this shows who is paying more, not why.` });
     }
   }
 
@@ -193,8 +245,8 @@ export async function mount(root, data) {
       <span class="step__n" aria-hidden="true">1</span>
       <h3>${sped ? `Electricity use is climbing ${pct((100 * f.post) / b.avg_mw).replace('+', '')} a year, after years of no growth.` : 'Electricity use before and after ChatGPT.'}</h3>
       <div id="heroLine"></div>
-      ${f ? `<p class="step__say">Before ChatGPT: ${pct((100 * f.pre) / b.avg_mw)} a year (${plus(f.pre)} a year), from ${esc(ymLabel(f.first))} to ${esc(ymLabel(RELEASE))}. Since: ${pct((100 * f.post) / b.avg_mw)} a year (${plus(f.post)} a year).</p>` : ''}
-      <p class="step__cap">Average electricity use in PJM, smoothed over 12 months, in gigawatts (GW). The dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading. Touch the line to read any month.</p>
+      ${f ? `<p class="step__say">Before ChatGPT: ${pct((100 * f.pre) / b.avg_mw)} a year. Since: ${pct((100 * f.post) / b.avg_mw)} a year.${fW ? ` Taking out the effect of hot summers and cold winters: ${pct((100 * fW.post) / b.avg_mw)} a year, give or take ${((100 * 1.96 * fW.sePost) / b.avg_mw).toFixed(1)}%.` : ''}</p>` : ''}
+      <p class="step__cap">Average electricity use in PJM, smoothed over 12 months, in gigawatts (GW).${fW ? ` The weather-adjusted rate uses heating and cooling degree days from EIA; “give or take” is a 95% range.` : ''} The dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading. Touch the line to read any month.</p>
       <details class="proof" data-proof="0"><summary>Show the full chart and how it was checked</summary><div></div></details>
     </section>
     ${steps.map((s, i) => `<section class="step">

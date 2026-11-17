@@ -80,3 +80,10 @@ export function loadPlanned() {
   plannedCache ??= get('planned.json', true).then((o) => (o ? { meta: o.meta, units: unpack(o) } : null)).catch(() => null);
   return plannedCache;
 }
+
+// Optional extra files (degree days, prices, solar cross-check); null when the data build has none.
+const extraCache = {};
+export function loadExtra(name) {
+  extraCache[name] ??= get(`${name}.json`, true).catch(() => null);
+  return extraCache[name];
+}
