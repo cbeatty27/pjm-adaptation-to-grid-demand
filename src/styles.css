@@ -482,3 +482,15 @@ main { flex: 1; min-height: 0; outline: none; }
 @media (prefers-reduced-motion: reduce) { .wi__track i { transition: none; } }
 @media (max-width: 860px) { .wi__grid { grid-template-columns: 1fr; } .wi__charts { grid-template-columns: 1fr; } }
 @media (max-width: 860px) { .wi__out { order: -1; } }
+
+/* story charts drawn at their shown width */
+.schart { position: relative; margin: 4px 0 6px; touch-action: pan-y; }
+.schart svg { display: block; overflow: visible; font-family: var(--body); }
+.schart svg text { font-family: var(--body); }
+.schart__guide { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.schart__tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 11px; font-size: 14px; line-height: 1.45; color: var(--ink-2); box-shadow: 0 4px 14px rgba(20, 27, 45, .12); white-space: nowrap; z-index: 2; }
+.schart__tip b { display: block; color: var(--ink); font-weight: 700; }
+.schart__key { display: none; gap: 6px 18px; flex-wrap: wrap; margin: 4px 0 10px; font-size: 14px; color: var(--ink-2); }
+.schart__key span { display: inline-flex; align-items: center; gap: 7px; }
+.schart__key i { width: 13px; height: 4px; border-radius: 2px; display: inline-block; }
+@media (max-width: 600px) { .schart__key { display: flex; } }
