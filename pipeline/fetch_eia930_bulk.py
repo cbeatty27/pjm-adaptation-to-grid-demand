@@ -38,7 +38,7 @@ HALVES = ("Jan_Jun", "Jul_Dec")
 FIRST = (2015, "Jul_Dec")             # first file EIA published
 API_START = "2019-01-01T00"           # the API serves hours from here
 OVERLAP = (2019, "Jan_Jun")           # used only to check alignment and the U.S. sum
-UA = {"User-Agent": "pjm-adaption-study (research; contact: repo owner)"}
+UA = {"User-Agent": "pjm-adaptation-study (research; contact: repo owner)"}
 
 # EIA's names in the bulk files -> the API's fuel codes (same codes build_site_data.py groups)
 SOURCE_CODE = [("natural gas", "NG"), ("coal", "COL"), ("nuclear", "NUC"), ("hydro", "WAT"), ("solar", "SUN"),

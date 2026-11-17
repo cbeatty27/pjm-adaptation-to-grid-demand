@@ -201,7 +201,7 @@ def norm_col(c) -> str:
 def find_860m_url() -> str:
     import requests
 
-    r = requests.get(EIA860M_PAGE, timeout=60, headers={"User-Agent": "Mozilla/5.0 (pjm-adaption-to-grid-demand data pipeline)"})
+    r = requests.get(EIA860M_PAGE, timeout=60, headers={"User-Agent": "Mozilla/5.0 (pjm-adaptation-to-grid-demand data pipeline)"})
     r.raise_for_status()
     best = None
     for href in re.findall(r'href="([^"]+_generator\d{4}\.xlsx?)"', r.text, flags=re.I):
@@ -228,7 +228,7 @@ def pull_retired(prov: dict) -> None:
 
             url = find_860m_url()
             path = CACHE / "eia860m_latest.xlsx"
-            with requests.get(url, timeout=300, stream=True, headers={"User-Agent": "Mozilla/5.0 (pjm-adaption-to-grid-demand data pipeline)"}) as r:
+            with requests.get(url, timeout=300, stream=True, headers={"User-Agent": "Mozilla/5.0 (pjm-adaptation-to-grid-demand data pipeline)"}) as r:
                 r.raise_for_status()
                 with open(path, "wb") as f:
                     for chunk in r.iter_content(1 << 20):
