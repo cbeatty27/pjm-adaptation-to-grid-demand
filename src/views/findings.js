@@ -211,6 +211,18 @@ export async function mount(root, data) {
     }
   }
 
+  // 8. will it be enough: PJM's own capacity auctions, load forecast and interconnection queue (hand-entered from PJM's
+  // publications, with sources, in pjm_reports.json)
+  const pjmr = await loadExtra('pjm_reports');
+  if (pjmr?.auctions?.length >= 2) {
+    const A = pjmr.auctions, last = A[A.length - 1], fc = pjmr.forecast, q = pjmr.queue?.in_study;
+    const mwTxt = (v) => (v >= 1000 ? gw(v) : `${nf0.format(v)} MW`);
+    steps.push({ key: 'enough', h: `Will it be enough? PJM’s own auctions say no: ${gw(last.short_mw)} short for ${last.delivery_year.replace('/', '–').replace(/–20/, '–')}.`,
+      g: pairs(A.map((a) => ({ name: `For ${a.delivery_year.replace('/', '–').replace(/–20/, '–')}`, a: a.new_gen_mw, b: a.short_mw, aText: mwTxt(a.new_gen_mw), bText: a.short_mw ? mwTxt(a.short_mw) : 'none' })), { aLabel: 'New power plants secured', bLabel: 'Short of PJM’s reliability target', aColor: C.ink, bColor: C.hot }),
+      say: `Each auction is securing less new power, and for two years running PJM has fallen short of the reliability target it sets for itself.${fc ? ` It expects peak demand to grow ${fc.summer_peak_growth_10yr_pct}% a year for the next decade; in 2021 it expected ${fc.summer_peak_growth_10yr_pct_2021_report}%.` : ''}`,
+      cap: `PJM buys power plant capacity about three years ahead in auctions. Figures are as PJM credits plants for reliability at peak times, which is less than their size on paper. ${A[1]?.forecast_increase_data_centers_mw ? `PJM said ${nf0.format(A[1].forecast_increase_data_centers_mw)} MW of the ${nf0.format(A[1].forecast_increase_mw)} MW rise in its forecast for the ${A[1].delivery_year} auction came from data centers. ` : ''}${q ? `More is in line: ${nf0.format(q.gw)} GW of projects entered PJM’s study process in ${ymLabel(q.date.slice(0, 7))}, led by gas (${nf0.format(q.by_fuel_gw.gas)} GW)${pjmr.queue.since_2020_processed_gw ? `, but since 2020 only about ${frac(pjmr.queue.since_2020_signed_gw / pjmr.queue.since_2020_processed_gw)} of the capacity PJM studied reached a signed agreement to connect` : ''}. ` : ''}Sources: PJM news releases and reports, listed on the Sources page.` });
+  }
+
   // order of the argument: demand (1-3), then supply: what was built, what filled the gap, where it was built, what is coming
   { const w = steps.findIndex((x) => x.key === 'where'), k = steps.findIndex((x) => x.key === 'slack'); if (w >= 0 && k > w) steps.splice(k, 0, steps.splice(w, 1)[0]); }
 

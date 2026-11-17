@@ -1,0 +1,58 @@
+{
+  "note": "Entered by hand from PJM Interconnection's own publications. Capacity auction figures are UCAP MW: megawatts as PJM credits them for reliability at peak, not nameplate size. Update when PJM publishes a new auction, forecast or queue cycle.",
+  "auctions": [
+    {
+      "delivery_year": "2026/2027",
+      "held": "2025-07",
+      "new_gen_mw": 2669,
+      "short_mw": 0,
+      "over_mw": 139,
+      "source": "PJM news release, July 22, 2025",
+      "url": "https://www.pjm.com/-/media/DotCom/about-pjm/newsroom/2025-releases/20250722-pjm-auction-procures-134311-mw-of-generation-resources-supply-responds-to-price-signal.pdf"
+    },
+    {
+      "delivery_year": "2027/2028",
+      "held": "2025-12",
+      "new_gen_mw": 774,
+      "short_mw": 6623,
+      "reserve_margin_pct": 14.8,
+      "target_reserve_margin_pct": 20.0,
+      "forecast_increase_mw": 5250,
+      "forecast_increase_data_centers_mw": 5100,
+      "source": "PJM news release, December 17, 2025",
+      "url": "https://www.pjm.com/-/media/DotCom/about-pjm/newsroom/2025-releases/20251217-pjm-auction-procures-134479-mw-of-generation-resources.pdf"
+    },
+    {
+      "delivery_year": "2028/2029",
+      "held": "2026-07",
+      "new_gen_mw": 525,
+      "short_mw": 6831,
+      "reserve_margin_pct": 14.7,
+      "forecast_increase_mw": 2000,
+      "source": "PJM news release, July 14, 2026",
+      "url": "https://www.pjm.com/-/media/DotCom/about-pjm/newsroom/2026-releases/20260714-pjm-capacity-auction-procures-138318-mw-of-generation-resources.pdf"
+    }
+  ],
+  "forecast": {
+    "report": "2026 PJM Load Forecast Report",
+    "posted": "2026-01-14",
+    "summer_peak_growth_10yr_pct": 3.6,
+    "summer_peak_growth_10yr_pct_2021_report": 0.3,
+    "summer_peak_mw": { "2027": 160451, "2028": 165567, "2029": 171530, "2030": 183008, "2031": 191017, "2035": 216872 },
+    "record_summer_peak_mw": 166929,
+    "record_summer_peak_year": 2006,
+    "source": "PJM Inside Lines, January 14, 2026, on the 2026 Long-Term Load Forecast Report",
+    "url": "https://insidelines.pjm.com/pjms-updated-20-year-forecast-continues-to-see-significant-long-term-load-growth/",
+    "report_url": "https://www.pjm.com/-/media/DotCom/library/reports-notices/load-forecast/2026-load-report.pdf"
+  },
+  "queue": {
+    "cycle": "Cycle 1",
+    "applied": { "date": "2026-04-29", "projects": 811, "gw": 220, "by_fuel_gw": { "gas": 105.8, "storage": 66.5, "nuclear": 17.9, "solar": 14.8, "solar_storage": 8.9, "wind": 4.7 } },
+    "in_study": { "date": "2026-09-28", "projects": 617, "gw": 168.6, "by_fuel_gw": { "gas": 81.1, "storage": 50.1, "nuclear": 17.6, "solar": 9.4, "solar_storage": 6.0, "wind": 3.5, "other": 0.789, "hydro": 0.086 } },
+    "since_2020_processed_gw": 300,
+    "since_2020_signed_gw": 103,
+    "source": "PJM Inside Lines: 'Over 800 New Generation Projects Seek To Connect' (April 29, 2026) and 'Over 600 Projects Enter Phase I' (September 2026)",
+    "url": "https://insidelines.pjm.com/over-600-projects-enter-phase-1-of-pjms-new-interconnection-process/",
+    "applied_url": "https://insidelines.pjm.com/over-800-new-generation-projects-seek-to-connect-under-pjms-reformed-process/"
+  }
+}
