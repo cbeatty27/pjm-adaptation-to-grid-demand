@@ -17,7 +17,7 @@ export function pairs(rows, { aLabel, bLabel, aColor = C.ink, bColor = C.hot, ma
   const m = max ?? Math.max(...rows.flatMap((r) => [r.a, r.b]), 1e-9);
   const bar = (v, color, lab, text) => `<span class="pairs__bar"><em>${esc(lab)}</em><span class="bars__track"><i style="--f:${(v / m).toFixed(4)};background:${color}"></i><b>${esc(text)}</b></span></span>`;
   return `<div class="pairs" role="img" aria-label="${esc(rows.map((r) => `${r.name}: ${r.hideB ? '' : `${aLabel} `}${r.aText}${r.hideB ? '' : `, ${bLabel} ${r.bText}`}`).join('; '))}">${rows.map((r) => `
-    <div class="pairs__row"><strong>${esc(r.name)}</strong><div>${bar(r.a, r.aColor || aColor, r.hideB ? 'Growth at the current pace' : aLabel, r.aText)}${r.hideB ? '' : bar(r.b, bColor, bLabel, r.bText)}</div></div>`).join('')}</div>`;
+    <div class="pairs__row"><strong>${esc(r.name)}</strong><div>${bar(r.a, r.aColor || aColor, r.aLab || (r.hideB ? 'Growth at the current pace' : aLabel), r.aText)}${r.hideB ? '' : bar(r.b, bColor, bLabel, r.bText)}</div></div>`).join('')}</div>`;
 }
 
 // The big line: grey before the release, colour after, a dotted line where the earlier trend was heading.

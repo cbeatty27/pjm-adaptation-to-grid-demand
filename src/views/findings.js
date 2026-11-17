@@ -173,7 +173,7 @@ export async function mount(root, data) {
       const gwP = (v) => (v < 50 ? `${nf0.format(v)} MW` : gw(v));
       // one scale for both views, so switching shows how much smaller delivered power is than size on paper
       const scaleMax = Math.max(...rows.flatMap((r) => [r.a, r.b]), f?.post || 0);
-      const onPaper = pairs(rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax });
+      const onPaper = (extra = []) => pairs([...rows.map((r) => ({ name: r.name, a: r.a, b: r.b, aText: gwP(r.a), bText: gwP(r.b) })), ...extra], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax });
       // when the plants under construction are due, and the largest of them
       const UC = P.filter((u) => building.has(u.status) && u.online);
       const byYear = {};
@@ -184,7 +184,8 @@ export async function mount(root, data) {
       UC.forEach((u) => { const k = u.plant; (byPlant[k] ??= { name: u.name, st: u.state, g: u.group, mw: 0 }).mw += u.mw || 0; });
       const big = Object.values(byPlant).sort((x, y) => y.mw - x.mw)[0];
       const bigName = big ? big.name.replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+(Commercial\s+)?Project$/i, '').trim() : '';
-      const when = soon.length && ucTot > 0 && soonMw / ucTot > 0.8 ? ` Nearly all of it is due by the end of ${soon[soon.length - 1]}${big && big.mw >= 1000 ? `, led by ${bigName} (${gw(big.mw)})` : ''}; after that, almost nothing is being built yet.` : '';
+      const soonTxt = soon.length && ucTot > 0 && soonMw / ucTot > 0.8 ? `, nearly all of it by the end of ${soon[soon.length - 1]}` : '';
+      const when = soon.length && ucTot > 0 && soonMw / ucTot > 0.8 ? ` Nearly all of that is due by the end of ${soon[soon.length - 1]}${big && big.mw >= 1000 ? `, led by ${bigName} (${gw(big.mw)})` : ''}; after that, almost nothing is being built yet.` : '';
       const head = gas.a < 0.05 * gas.b ? `What is coming? ${gw(gas.a + gas.b)} of gas is planned. Almost none is being built yet.` : `What is coming? ${gw(gas.a + gas.b)} of gas is planned, ${gw(gas.a)} of it under construction.`;
       const sayPaper = `New gas is on paper, not on the ground: ${gwP(gas.a)} under construction${gasYrs.length ? `, and the large plants are not due before ${ymLabel(gasYrs[0]).split(' ').pop()}` : ''}. What is actually being built is solar and wind.`;
       const capBase = `Power plants that owners have reported to the government as planned in PJM: ${gw(all)} in total, due between ${ymLabel(yrs[0])} and ${ymLabel(yrs[yrs.length - 1])}. Planned projects are often delayed or cancelled.`;
@@ -194,19 +195,25 @@ export async function mount(root, data) {
       const cfOf = (g) => (g === 'solar' && solarCheck?.latest12?.cf_eia923 ? solarCheck.latest12.cf_eia923 : cfNow[g]?.cf);
       const exp = rows.filter((r) => cfOf(r.g) > 0).map((r) => ({ ...r, cf: cfOf(r.g), ea: r.a * cfOf(r.g), eb: r.b * cfOf(r.g) }));
       const pace = f && f.post > 0 ? f.post : null;
+      // announced closures (EIA-860M Operating tab, planned retirement date) from now to the end of 2030, at the same running rates
+      const nowYm = meta.plants?.snapshot_period || l.to, horizon = '2030-12';
+      const closing = (planned.retiring || []).filter((u) => u.pjm && u.retire && u.retire > nowYm && u.retire <= horizon);
+      const closeMw = closing.reduce((x, u) => x + (u.mw || 0), 0);
+      const closeDel = closing.reduce((x, u) => x + (u.mw || 0) * (cfOf(u.group) || 0), 0);
+      const closeCoal = closing.filter((u) => u.group === 'coal').reduce((x, u) => x + (u.mw || 0), 0);
       if (exp.length >= 2 && pace) {
         const ea = exp.reduce((x, r) => x + r.ea, 0), eb = exp.reduce((x, r) => x + r.eb, 0);
         const span = (mw) => { const mo = (12 * mw) / pace; return mo < 18 ? `${nf0.format(mo)} months` : `${(mo / 12).toFixed(1)} years`; };
         const left = rows.filter((r) => !exp.some((x) => x.g === r.g)).map((r) => r.name.toLowerCase());
-        steps.push({ h: `What is coming? Plants under construction would cover about ${span(ea)} of demand growth.`,
+        steps.push({ h: closeDel > ea ? `What is coming? Not enough to replace the plants due to close.` : `What is coming? Plants under construction would cover about ${span(ea)} of demand growth.`,
           views: [
-            { label: 'What it should deliver', g: pairs([...exp.map((r) => ({ name: r.name, a: r.ea, b: r.eb, aText: gwP(r.ea), bText: gwP(r.eb) })), { name: 'Demand', a: pace, b: 0, aText: `${plus(pace)} every year`, bText: '', hideB: true, aColor: C.hot }], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax }),
-              say: `Everything under construction should deliver about ${gw(ea)} on an average hour. Demand is growing ${gw(pace)} a year.${when}` },
-            { label: 'Size on paper', g: onPaper, say: `${sayPaper} The rest of the plan would deliver about ${gw(eb)}, most of it gas that has not broken ground.` },
+            { label: 'What it should deliver', g: pairs([...exp.map((r) => ({ name: r.name, a: r.ea, b: r.eb, aText: gwP(r.ea), bText: gwP(r.eb) })), ...(closeMw > 0 ? [{ name: `Closing by ${horizon.slice(0, 4)}`, a: closeDel, b: 0, aText: `−${gw(closeDel)}`, bText: '', hideB: true, aColor: C.gas, aLab: 'What they deliver now' }] : []), { name: 'Demand', a: pace, b: 0, aText: `${plus(pace)} every year`, bText: '', hideB: true, aColor: C.hot }], { aLabel: 'Under construction', bLabel: 'Planned, construction not started', aColor: C.ink, bColor: C.grey, max: scaleMax }),
+              say: `What is being built should add about ${gw(ea)}${soonTxt}.${closeMw > 0 ? ` Plants due to close by ${horizon.slice(0, 4)} supply about ${gw(closeDel)} today.` : ''} And demand grows ${gw(pace)} every year.` },
+            { label: 'Size on paper', g: onPaper(closeMw > 0 ? [{ name: `Closing by ${horizon.slice(0, 4)}`, a: closeMw, b: 0, aText: `−${gw(closeMw)}`, bText: '', hideB: true, aColor: C.gas, aLab: 'Size on paper' }] : []), say: `${sayPaper} The rest of the plan would deliver about ${gw(eb)}, most of it gas that has not broken ground.` },
           ],
-          cap: `${capBase} “What it should deliver” multiplies each plant’s size by how hard PJM’s existing plants of that fuel ran over the latest 12 months (${exp.map((r) => `${r.name.toLowerCase()} ${nf0.format(100 * r.cf)}%`).join(', ')}${solarCheck?.latest12?.cf_eia923 ? '; the solar rate is from plant reports, since PJM’s hourly figures undercount solar' : ''}). New plants may run more or less than that${left.length ? `; ${left.join(' and ')} ${left.length > 1 || left[0].endsWith('s') ? 'are' : 'is'} left out because ${left.includes('batteries') ? 'batteries store power and do not make it' : 'there is no running rate to apply'}` : ''}.` });
+          cap: `${capBase} “What it should deliver” multiplies each plant’s size by how hard PJM’s existing plants of that fuel ran over the latest 12 months (${exp.map((r) => `${r.name.toLowerCase()} ${nf0.format(100 * r.cf)}%`).join(', ')}${closeCoal > 0 && cfOf('coal') ? `, coal ${nf0.format(100 * cfOf('coal'))}%` : ''}${solarCheck?.latest12?.cf_eia923 ? '; the solar rate is from plant reports, since PJM’s hourly figures undercount solar' : ''}). ${when.trim() ? `${when.trim().replace(/^Nearly all of that is/, 'Nearly all of what is under construction is')} ` : ''}${closeMw > 0 ? `${gw(closeMw)} of plants are due to close by the end of ${horizon.slice(0, 4)}, ${gw(closeCoal)} of it coal. ` : ''}Closures are plants whose owners have reported a retirement date to EIA; such dates often slip, and PJM can ask plants to stay open for reliability. Plants near retirement may run less than the average. New plants may run more or less than that${left.length ? `; ${left.join(' and ')} ${left.length > 1 || left[0].endsWith('s') ? 'are' : 'is'} left out because ${left.includes('batteries') ? 'batteries store power and do not make it' : 'there is no running rate to apply'}` : ''}.` });
       } else {
-        steps.push({ h: head, g: onPaper, say: sayPaper, cap: `${capBase} Sizes are on paper.` });
+        steps.push({ h: head, g: onPaper(), say: sayPaper, cap: `${capBase} Sizes are on paper.` });
       }
     }
   }
