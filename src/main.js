@@ -11,6 +11,7 @@ const routes = {
   usmap: { load: () => import('./views/usmap.js'), title: 'U.S. map and timeline', needsUS: true },
   map: { load: () => import('./views/map.js'), title: 'PJM map and timeline' },
   case: { load: () => import('./views/case.js'), title: 'PJM case study' },
+  whatif: { load: () => import('./views/whatif.js'), title: 'What if' },
   data: { load: () => import('./views/explorer.js'), title: 'All the data' },
   sources: { load: () => import('./views/sources.js'), title: 'Sources and method' },
 };
