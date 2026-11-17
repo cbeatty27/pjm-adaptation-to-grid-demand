@@ -211,27 +211,6 @@ export async function mount(root, data) {
     }
   }
 
-  // 8. who pays: average retail electricity price (revenue divided by sales) in the states that sit wholly or mostly in
-  // PJM, against the U.S., the latest 12 months against the 12 before the release. Not adjusted for inflation.
-  const prices = await loadExtra('prices');
-  if (prices?.rows?.length) {
-    const CORE = ['PA', 'NJ', 'MD', 'DE', 'DC', 'OH', 'VA', 'WV'];
-    const pm = prices.rows.map((r) => r[0]).sort(), pLast = pm[pm.length - 1];
-    const twelve = (end) => { const out = new Set(); let y = Number(end.slice(0, 4)), m = Number(end.slice(5, 7)); for (let k = 0; k < 12; k++) { out.add(`${y}-${String(m).padStart(2, '0')}`); if (--m === 0) { m = 12; y--; } } return out; };
-    const W0 = twelve(b.to), W1 = twelve(pLast);
-    const avgP = (states, sec, W) => { let rev = 0, sal = 0; prices.rows.forEach(([m, st, sc, , sales, revenue]) => { if (sc === sec && states.includes(st) && W.has(m) && sales != null && revenue != null) { rev += revenue; sal += sales; } }); return sal ? (100 * rev) / sal : null; };
-    const ch = (states, sec) => { const a = avgP(states, sec, W0), c = avgP(states, sec, W1); return a && c ? { a, c, pct: 100 * (c / a - 1) } : null; };
-    const types = [['RES', 'Households'], ['COM', 'Businesses'], ['IND', 'Industry']].map(([k, nm]) => ({ nm, pjm: ch(CORE, k), us: ch(['US'], k) })).filter((r) => r.pjm && r.us);
-    const home = types.find((r) => r.nm === 'Households');
-    if (types.length && home && home.pjm.pct > home.us.pct) {
-      const perMonth = ((home.pjm.c - home.pjm.a) / 100) * (10791 / 12);
-      steps.push({ key: 'pays', h: `Who pays? Household electricity prices in PJM’s states rose ${nf0.format(home.pjm.pct)}%. Nationally, ${nf0.format(home.us.pct)}%.`,
-        g: pairs(types.map((r) => ({ name: r.nm, a: r.pjm.pct, b: r.us.pct, aText: `+${nf0.format(r.pjm.pct)}%`, bText: `+${nf0.format(r.us.pct)}%` })), { aLabel: 'PJM’s states', bLabel: 'Whole U.S.', aColor: C.hot, bColor: C.grey }),
-        say: `For a home using the U.S. average amount of electricity, that is about $${nf0.format(perMonth)} more a month than before ChatGPT.`,
-        cap: `Average price per kilowatt-hour, the 12 months to ${ymLabel(pLast)} against the 12 months to ${ymLabel(b.to)}, not adjusted for inflation. PJM’s states here are the eight that sit wholly or mostly in PJM (${CORE.join(', ')}). Prices rise for many reasons, including natural gas prices, transmission and PJM’s capacity auction, so this shows who is paying more, not why.` });
-    }
-  }
-
   // order of the argument: demand (1-3), then supply: what was built, what filled the gap, where it was built, what is coming
   { const w = steps.findIndex((x) => x.key === 'where'), k = steps.findIndex((x) => x.key === 'slack'); if (w >= 0 && k > w) steps.splice(k, 0, steps.splice(w, 1)[0]); }
 
