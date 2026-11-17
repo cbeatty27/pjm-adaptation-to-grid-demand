@@ -64,16 +64,34 @@ export async function mount(root, data) {
       proof: (host) => [zoneFigure(host, zs, b, l)] });
   }
 
-  // 4. where the data centers are against where the power plants went
+  // 6. where the new demand is against the power made there. Demand growth by PJM utility territory (EIA-930, monthly) and
+  // net generation by state from all plants (EIA-923), over the same two 12-month windows; the part from plants that opened
+  // since the release is each plant's size times the latest running rate of PJM's fleet of that fuel (solar from plant reports).
+  // Territories and states do not line up exactly: Dominion is mostly Virginia; AEP also reaches into neighboring states.
   const geo = pjmGeo(data);
-  if (geo) {
-    const p = (v, t) => (100 * v) / t, same = geo.builder.s === geo.lead.s;
-    const rows = (same ? geo.top.slice(0, 2) : [geo.lead, geo.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, geo.tSq), b: p(r.add, geo.tAdd), aText: `${nf0.format(p(r.sqft, geo.tSq))}%`, bText: `${nf0.format(p(r.add, geo.tAdd))}%` }));
-    steps.push({ key: 'where', h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
-      say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
-      g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity', unit: '%' }),
-      cap: `Data centers are measured by the ground area of their buildings in the IM3 Data Center Atlas, added up for the PJM states. It is not their power use, which the atlas does not report.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
-      links: [[`#/maps?county=${encodeURIComponent(`${geo.hub.name},${geo.hub.st}`)}`, `See ${geo.hub.name.replace(/ County$/, '')} County on the map`], ...(same ? [] : [[`#/maps?state=${geo.builder.s}`, `See ${stateName(geo.builder.s)} on the map`]]), ['#/data?show=county', 'Compare every county']] });
+  const s923 = await loadExtra('solar923');
+  if (s923?.rows?.length && demand.zones?.DOM?.avg_mw) {
+    const months923 = [...new Set(s923.rows.filter((r) => r[2] === 'ALL').map((r) => r[0]))].sort();
+    const twelve = (end) => { const out = []; let y = Number(end.slice(0, 4)), m = Number(end.slice(5, 7)); for (let k = 0; k < 12; k++) { out.unshift(`${y}-${String(m).padStart(2, '0')}`); if (--m === 0) { m = 12; y--; } } return out; };
+    const W0 = twelve(b.to), W1 = twelve(months923[months923.length - 1]);
+    const hrs = (m) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0).getDate() * 24;
+    const zoneAvg = (zones, W) => { let x = 0, h = 0; for (const m of W) { const i = mo.months.indexOf(m); if (i < 0) return null; let v = 0; for (const z of zones) { const a = demand.zones[z]?.avg_mw?.[i]; if (a == null) return null; v += a; } x += v * hrs(m); h += hrs(m); } return x / h; };
+    const genAvg = (st, W) => { let x = 0, h = 0; for (const m of W) { const r = s923.rows.find((q) => q[0] === m && q[1] === st && q[2] === 'ALL'); if (!r || r[3] == null) return null; x += r[3] * 1000; h += hrs(m); } return x / h; };
+    const runNow = cg?.windows?.[cg.windows.length - 1]?.groups || {};
+    const rate = (g) => (g === 'solar' && solarCheck?.latest12?.cf_eia923 ? solarCheck.latest12.cf_eia923 : runNow[g]?.cf || 0);
+    const Wn = ymIndex(meta.window_start.slice(0, 7));
+    const fromNew = (st) => data.units.filter((u) => u.state_cls === 'operating' && u.online && ymIndex(u.online) > Wn && u.state === st).reduce((x, u) => x + (u.mw || 0) * rate(u.group), 0);
+    const place = (name, zones, st) => { const d0 = zoneAvg(zones, W0), d1 = zoneAvg(zones, W1), g0 = genAvg(st, W0), g1 = genAvg(st, W1); return d0 == null || d1 == null || g0 == null || g1 == null ? null : { name, d: d1 - d0, g: g1 - g0, n: fromNew(st) }; };
+    const va = place('Virginia', ['DOM'], 'VA'), oh = place('Ohio', ['AEP', 'ATSI', 'DAY', 'DEOK'], 'OH');
+    if (va && va.d > 0) {
+      const rowsP = [va, oh].filter(Boolean);
+      const gap = va.d - va.g;
+      steps.push({ key: 'where', h: gap > va.d / 3 ? `Virginia makes only part of its new power. The rest comes in over power lines.` : `Virginia is making most of its new power itself.`,
+        g: pairs(rowsP.map((r) => ({ name: r.name, a: Math.max(r.d, 0), b: Math.max(r.g, 0), aText: plus(r.d), bText: plus(r.g) })), { aLabel: 'Growth in electricity use', bLabel: 'Growth in power made there', aColor: C.hot, bColor: C.ink }),
+        say: `Demand in Virginia grew ${gw(va.d)}. Power made in Virginia grew ${gw(va.g)}: about ${gw(Math.min(va.n, va.g))} from new plants and the rest from existing plants running harder. The other ${gw(gap)} is carried in from elsewhere on the grid.`,
+        cap: `Average power, the 12 months to ${ymLabel(W1[11])} against the 12 months to ${ymLabel(W0[11])}. Electricity use is by utility territory: Dominion for Virginia; AEP, ATSI, Dayton and Duke for Ohio. Power made is all plants in the state, as reported to EIA. Territories and states do not line up exactly, since Dominion reaches into North Carolina and AEP into neighboring states, so the comparison is approximate. The new-plant share is each plant’s size times how hard PJM’s plants of that fuel ran over the latest 12 months.${geo ? ' Loudoun County, with the most data center floor space in PJM, has had no new power plants since the release.' : ''}`,
+        links: [...(geo ? [[`#/maps?county=${encodeURIComponent(`${geo.hub.name},${geo.hub.st}`)}`, `See ${geo.hub.name.replace(/ County$/, '')} County on the map`]] : []), ['#/maps?state=OH', 'See Ohio on the map'], ['#/data?show=county', 'Compare every county']] });
+    }
   }
 
   // capacity of PJM generators that began operating after the release month (nameplate, or net summer with 'msum')
