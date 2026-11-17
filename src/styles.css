@@ -428,3 +428,10 @@ main { flex: 1; min-height: 0; outline: none; }
 .go--light { background: var(--accent-soft); color: var(--accent-ink); }
 .go--light:hover { background: #d6dcfb; }
 #xCounty { scroll-margin-top: 16px; }
+.twomaps { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.twomaps h4 { font-family: var(--display); font-size: 19px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.twomaps h4 i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.twomaps svg { display: block; font-family: var(--body); }
+.mapkey { display: flex; align-items: flex-end; gap: 16px; margin-top: 10px; font-size: 13.5px; color: var(--ink-3); }
+.twomaps__key { width: calc((100% - 20px) / 4); flex: none; font-family: var(--body); } /* half a map column: the same scale as the maps */
+@media (max-width: 640px) { .twomaps { grid-template-columns: 1fr; } .mapkey { flex-direction: column; align-items: flex-start; } .twomaps__key { width: 50%; } }

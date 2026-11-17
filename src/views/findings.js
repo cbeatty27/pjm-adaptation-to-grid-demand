@@ -7,6 +7,7 @@ import { trendFit, rolling12, RELEASE } from '../lib/stats.js';
 import { loadExplorer, loadHourly, loadPlanned, loadExtra } from '../lib/data.js';
 import { bars, pairs, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
+import { twoMaps } from '../lib/twomaps.js';
 
 const gw = (mw, d = 1) => `${(Math.abs(mw) / 1000).toFixed(d)} GW`;
 const plus = (mw) => `${mw >= 0 ? '+' : '−'}${gw(mw)}`;
@@ -64,33 +65,33 @@ export async function mount(root, data) {
       proof: (host) => [zoneFigure(host, zs, b, l)] });
   }
 
-  // 6. where the new demand is against the power made there. Demand growth by PJM utility territory (EIA-930, monthly) and
-  // net generation by state from all plants (EIA-923), over the same two 12-month windows; the part from plants that opened
-  // since the release is each plant's size times the latest running rate of PJM's fleet of that fuel (solar from plant reports).
-  // Territories and states do not line up exactly: Dominion is mostly Virginia; AEP also reaches into neighboring states.
+  // 6. where demand grew against where new power was built. Demand growth by PJM utility territory (EIA-930), each territory
+  // placed in the state holding most of its load; new power is the average output of plants that opened since the release
+  // (size times the latest running rate of PJM's fleet of that fuel; solar from plant reports), by state (EIA-860M).
   const geo = pjmGeo(data);
-  const s923 = await loadExtra('solar923');
-  if (s923?.rows?.length && demand.zones?.DOM?.avg_mw) {
-    const months923 = [...new Set(s923.rows.filter((r) => r[2] === 'ALL').map((r) => r[0]))].sort();
-    const twelve = (end) => { const out = []; let y = Number(end.slice(0, 4)), m = Number(end.slice(5, 7)); for (let k = 0; k < 12; k++) { out.unshift(`${y}-${String(m).padStart(2, '0')}`); if (--m === 0) { m = 12; y--; } } return out; };
-    const W0 = twelve(b.to), W1 = twelve(months923[months923.length - 1]);
-    const hrs = (m) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0).getDate() * 24;
-    const zoneAvg = (zones, W) => { let x = 0, h = 0; for (const m of W) { const i = mo.months.indexOf(m); if (i < 0) return null; let v = 0; for (const z of zones) { const a = demand.zones[z]?.avg_mw?.[i]; if (a == null) return null; v += a; } x += v * hrs(m); h += hrs(m); } return x / h; };
-    const genAvg = (st, W) => { let x = 0, h = 0; for (const m of W) { const r = s923.rows.find((q) => q[0] === m && q[1] === st && q[2] === 'ALL'); if (!r || r[3] == null) return null; x += r[3] * 1000; h += hrs(m); } return x / h; };
+  let mapsHtml = null;
+  {
+    const ZST = { DOM: 'VA', AEP: 'OH', ATSI: 'OH', DAY: 'OH', DEOK: 'OH', CE: 'IL', PE: 'PA', PL: 'PA', PN: 'PA', ME: 'PA', DUQ: 'PA', PS: 'NJ', JC: 'NJ', AE: 'NJ', RECO: 'NJ', BC: 'MD', PEP: 'MD', DPL: 'DE', AP: 'WV', EKPC: 'KY' };
+    const dem = {};
+    zs.forEach((r) => { const st = ZST[r.z]; if (st) dem[st] = (dem[st] || 0) + r.d; });
     const runNow = cg?.windows?.[cg.windows.length - 1]?.groups || {};
     const rate = (g) => (g === 'solar' && solarCheck?.latest12?.cf_eia923 ? solarCheck.latest12.cf_eia923 : runNow[g]?.cf || 0);
-    const Wn = ymIndex(meta.window_start.slice(0, 7));
-    const fromNew = (st) => data.units.filter((u) => u.state_cls === 'operating' && u.online && ymIndex(u.online) > Wn && u.state === st).reduce((x, u) => x + (u.mw || 0) * rate(u.group), 0);
-    const place = (name, zones, st) => { const d0 = zoneAvg(zones, W0), d1 = zoneAvg(zones, W1), g0 = genAvg(st, W0), g1 = genAvg(st, W1); return d0 == null || d1 == null || g0 == null || g1 == null ? null : { name, d: d1 - d0, g: g1 - g0, n: fromNew(st) }; };
-    const va = place('Virginia', ['DOM'], 'VA'), oh = place('Ohio', ['AEP', 'ATSI', 'DAY', 'DEOK'], 'OH');
-    if (va && va.d > 0) {
-      const rowsP = [va, oh].filter(Boolean);
-      const gap = va.d - va.g;
-      steps.push({ key: 'where', h: gap > va.d / 3 ? `The biggest new demand is far from the new power.` : `Most new power is being made close to the new demand.`,
-        g: pairs(rowsP.map((r) => ({ name: r.name, a: Math.max(r.d, 0), b: Math.max(r.g, 0), aText: plus(r.d), bText: plus(r.g) })), { aLabel: 'Growth in electricity use', bLabel: 'Growth in power made there', aColor: C.hot, bColor: C.ink }),
-        say: `Demand in Virginia grew ${gw(va.d)}. Power made in Virginia grew ${gw(va.g)}: about ${gw(Math.min(va.n, va.g))} from new plants and the rest from existing plants running harder. The other ${gw(gap)} is carried in from elsewhere on the grid.`,
-        cap: `Average power, the 12 months to ${ymLabel(W1[11])} against the 12 months to ${ymLabel(W0[11])}. Electricity use is by utility territory: Dominion for Virginia; AEP, ATSI, Dayton and Duke for Ohio. Power made is all plants in the state, as reported to EIA. Territories and states do not line up exactly, since Dominion reaches into North Carolina and AEP into neighboring states, so the comparison is approximate. The new-plant share is each plant’s size times how hard PJM’s plants of that fuel ran over the latest 12 months.${geo ? ' Loudoun County, with the most data center floor space in PJM, has had no new power plants since the release.' : ''}`,
-        links: [...(geo ? [[`#/maps?county=${encodeURIComponent(`${geo.hub.name},${geo.hub.st}`)}`, `See ${geo.hub.name.replace(/ County$/, '')} County on the map`]] : []), ['#/maps?state=OH', 'See Ohio on the map'], ['#/data?show=county', 'Compare every county']] });
+    const Wn = ymIndex(meta.window_start.slice(0, 7)), made = {};
+    data.units.filter((u) => u.state_cls === 'operating' && u.online && ymIndex(u.online) > Wn).forEach((u) => { made[u.state] = (made[u.state] || 0) + (u.mw || 0) * rate(u.group); });
+    const posD = Object.values(dem).filter((v) => v > 0).reduce((x, v) => x + v, 0), totM = Object.values(made).reduce((x, v) => x + v, 0);
+    const shD = (100 * Math.max(dem.VA || 0, 0)) / posD, shM = (100 * (made.VA || 0)) / totM;
+    if (posD > 0 && totM > 0) {
+      try { mapsHtml = await twoMaps(dem, made); } catch { mapsHtml = null; }
+      const csvRows = [...new Set([...Object.keys(dem), ...Object.keys(made)])].flatMap((st) => [[st, 'Growth in electricity use', dem[st] || 0, 'MW'], [st, 'Average output of new power plants', made[st] || 0, 'MW']]);
+      if (mapsHtml) {
+        const share = (x) => (x > 45 && x < 55 ? 'Half' : x > 30 && x < 37 ? 'A third' : `${nf0.format(x)}%`);
+        const tenth = (x) => (x > 8 && x < 13 ? 'a tenth' : x > 3 && x < 8 ? 'a twentieth' : `${nf0.format(x)}%`);
+        steps.push({ key: 'where', h: 'The new demand is concentrated. The new power is spread out.',
+          g: `<div id="twomapsHost">${mapsHtml}</div><div hidden data-csv="${esc(JSON.stringify(csvRows))}"></div>`,
+          say: `${share(shD)} of PJM’s new demand is in Virginia. Only ${tenth(shM)} of its new power is.`,
+          cap: `Each utility territory is drawn in the state that holds most of its load, so Ohio’s circle includes some of AEP’s growth in neighboring states. New power is what plants opened since December 2022 deliver on an average hour.${geo ? ' Loudoun County, with the most data center floor space in PJM, has had no new power plants since the release.' : ''} Method on the Sources page.`,
+          links: [...(geo ? [[`#/maps?county=${encodeURIComponent(`${geo.hub.name},${geo.hub.st}`)}`, `See ${geo.hub.name.replace(/ County$/, '')} County on the map`]] : []), ['#/maps?state=OH', 'See Ohio on the map'], ['#/data?show=county', 'Compare every county']] });
+      }
     }
   }
 
