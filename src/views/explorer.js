@@ -1,4 +1,5 @@
 // All the data: demand and net generation by fuel at every interval EIA provides, with no comparison or conclusion drawn.
+import { mountCountyTable } from '../lib/countytable.js';
 import { Chart, GRID, releaseMarker } from '../lib/figs.js';
 import { FUEL_COLOR } from '../lib/fuels.js';
 import { esc, nf0, nf1 } from '../lib/format.js';
@@ -59,6 +60,7 @@ export async function mount(root, data) {
     <section class="fig"><div class="fig__head"><h3>Table and download</h3><p class="fig__note" id="xTblNote"></p></div>
       <div class="xdl"><button type="button" class="btn" id="xCsv">Download what is shown (CSV)</button><button type="button" class="btn" id="xCsvAll">Download this interval for all years (CSV)</button><button type="button" class="btn" id="x923" hidden>Download EIA-923 monthly (CSV)</button></div>
       <div class="fig__table" id="xTbl"></div></section>
+    <section class="fig" id="xCounty"></section>
   </div>`;
   const $ = (id) => root.querySelector(`#${id}`);
 
@@ -256,7 +258,8 @@ export async function mount(root, data) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  }
+  }  if (data.units && data.dcs) mountCountyTable(root.querySelector('#xCounty'), data, download);
+
   let lastView = null, lastEx = null;
 
   // ---------------------------------------------------------------- controls

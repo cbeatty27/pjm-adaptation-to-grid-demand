@@ -71,7 +71,7 @@ export async function mount(root, data) {
     const rows = (same ? geo.top.slice(0, 2) : [geo.lead, geo.builder]).map((r) => ({ name: stateName(r.s), a: p(r.sqft, geo.tSq), b: p(r.add, geo.tAdd), aText: `${nf0.format(p(r.sqft, geo.tSq))}%`, bText: `${nf0.format(p(r.add, geo.tAdd))}%` }));
     steps.push({ key: 'where', h: same ? `${stateName(geo.lead.s)} has the most data centers and the most new power plants.` : `Most data centers are in ${stateName(geo.lead.s)}. Most new power plants are not.`,
       say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
-      g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity' }),
+      g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity', unit: '%' }),
       cap: `Data centers are measured by the ground area of their buildings in the IM3 Data Center Atlas, added up for the PJM states. It is not their power use, which the atlas does not report.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
       link: ['#/maps', 'See it on the map'] });
   }
@@ -260,7 +260,7 @@ export async function mount(root, data) {
     <section class="step step--end">
       <h3>What this does not prove</h3>
       <p>These pictures show what changed and when. They do not prove who caused it: the government’s data does not say which customers use the power.</p>
-      <div class="end__links"><a class="go" href="#/maps">Open the map</a><a class="go go--quiet" href="#/data">Explore all the data</a>${meta.has_us ? '<a class="go go--quiet" href="#/us">Compare with the whole U.S.</a>' : ''}<a class="go go--quiet" href="#/sources">Sources and method</a></div>
+      <div class="end__links"><a class="go" href="#/maps">Open the map</a><a class="go go--quiet" href="#/data">Explore all the data</a>${meta.has_us ? '<a class="go go--quiet" href="#/us">Compare with the whole U.S.</a>' : ''}<a class="go go--quiet" href="#/sources">Sources and method</a><button type="button" class="go go--quiet" id="storyCsv">Download the numbers (CSV)</button></div>
       <p class="end__src">Data: U.S. Energy Information Administration (EIA) and the IM3 Data Center Atlas. Latest month: ${esc(ymLabel(l.to))}.</p>
     </section>
   </article>`;
@@ -282,6 +282,23 @@ export async function mount(root, data) {
   }));
 
   root.addEventListener('click', (e) => {
+    if (e.target.closest('#storyCsv')) {
+      // every bar on the page, as drawn: picture, headline, view, row, measure, value
+      const out = [['picture', 'headline', 'view', 'row', 'measure', 'value', 'unit'].join(',')];
+      const q = (v) => (typeof v === 'number' ? String(Math.round(v * 100) / 100) : `"${String(v).replace(/"/g, '""')}"`);
+      root.querySelectorAll('.step').forEach((sec) => {
+        const n = sec.querySelector('.step__n')?.textContent || '', h = sec.querySelector('h3')?.textContent || '';
+        sec.querySelectorAll('[data-csv]').forEach((el) => {
+          const pane = el.closest('[data-pane]'), view = pane ? sec.querySelector(`[data-view="${pane.dataset.pane}"]`)?.textContent || '' : '';
+          const d = JSON.parse(el.dataset.csv), list = Array.isArray(d[0]) ? d : [d];
+          list.forEach(([row, measure, value, unit]) => out.push([q(n), q(h), q(view), q(row), q(measure), q(value), q(unit || '')].join(',')));
+        });
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([out.join('\n')], { type: 'text/csv' })); a.download = 'pjm_story_numbers.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
     const btn = e.target.closest('[data-view]'); if (!btn) return;
     const sec = btn.closest('.step');
     sec.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));

@@ -4,20 +4,20 @@ import { esc } from './format.js';
 export const C = { ink: '#141b2d', mute: '#6b7389', grey: '#b3b9c7', line: '#dde0e8', hot: '#2b44d8', hotSoft: '#8f9df0', gas: '#e87e42', solar: '#d9ae36', solarSoft: '#f1e2b0' };
 
 // Horizontal bars in HTML, so they reflow on a phone. items: [{ label, value, text, color, soft? }]
-export function bars(items, { max = null } = {}) {
+export function bars(items, { max = null, unit = 'MW' } = {}) {
   const m = max ?? Math.max(...items.map((d) => Math.abs(d.value)), 1e-9);
   return `<div class="bars" role="img" aria-label="${esc(items.map((d) => `${d.label}: ${d.text}`).join('; '))}">${items.map((d) => `
-    <div class="bars__row"><span class="bars__lab">${esc(d.label)}</span>
+    <div class="bars__row" data-csv="${esc(JSON.stringify([d.label, '', d.value, unit]))}"><span class="bars__lab">${esc(d.label)}</span>
       <span class="bars__track"><i style="--f:${(Math.abs(d.value) / m).toFixed(4)};background:${d.color}"></i><b>${esc(d.text)}</b></span></div>`).join('')}</div>`;
 }
 
 // Two measures per place, side by side. rows: [{ name, a, b, aText, bText }]
 // max: a shared scale, so two charts that are toggled between draw the same value at the same length.
-export function pairs(rows, { aLabel, bLabel, aColor = C.ink, bColor = C.hot, max = null }) {
+export function pairs(rows, { aLabel, bLabel, aColor = C.ink, bColor = C.hot, max = null, unit = 'MW' }) {
   const m = max ?? Math.max(...rows.flatMap((r) => [r.a, r.b]), 1e-9);
   const bar = (v, color, lab, text) => `<span class="pairs__bar"><em>${esc(lab)}</em><span class="bars__track"><i style="--f:${(v / m).toFixed(4)};background:${color}"></i><b>${esc(text)}</b></span></span>`;
   return `<div class="pairs" role="img" aria-label="${esc(rows.map((r) => `${r.name}: ${r.hideB ? '' : `${aLabel} `}${r.aText}${r.hideB ? '' : `, ${bLabel} ${r.bText}`}`).join('; '))}">${rows.map((r) => `
-    <div class="pairs__row"><strong>${esc(r.name)}</strong><div>${bar(r.a, r.aColor || aColor, r.aLab || (r.hideB ? 'Growth at the current pace' : aLabel), r.aText)}${r.hideB ? '' : bar(r.b, bColor, bLabel, r.bText)}</div></div>`).join('')}</div>`;
+    <div class="pairs__row" data-csv="${esc(JSON.stringify([[r.name, r.aLab || (r.hideB ? 'Growth at the current pace' : aLabel), r.a, unit], ...(r.hideB ? [] : [[r.name, bLabel, r.b, unit]])]))}"><strong>${esc(r.name)}</strong><div>${bar(r.a, r.aColor || aColor, r.aLab || (r.hideB ? 'Growth at the current pace' : aLabel), r.aText)}${r.hideB ? '' : bar(r.b, bColor, bLabel, r.bText)}</div></div>`).join('')}</div>`;
 }
 
 // The big line: grey before the release, colour after, a dotted line where the earlier trend was heading.

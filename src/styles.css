@@ -417,3 +417,9 @@ main { flex: 1; min-height: 0; outline: none; }
 .views { margin: 0 0 22px; display: inline-flex; flex-wrap: wrap; }
 .views button { font-size: 15px; padding: 9px 16px; }
 .view .step__say { min-height: 3.8em; }
+.ctable th button { all: unset; cursor: pointer; font-weight: 600; }
+.ctable th button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.ctable th.num, .ctable td.num { text-align: right; }
+.step--end button.go { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 16px; }
+.ctable th, .ctable td { padding: 6px 12px; }
+.ctable tbody tr:nth-child(even) { background: var(--paper); }
