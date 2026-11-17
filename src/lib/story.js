@@ -93,3 +93,10 @@ export function homes(mw) {
   const n = (mw * 1000) / HOME_KW;
   return n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)} million` : `${Math.round(n / 1e4) * 10},000`;
 }
+
+// Vertical columns for a short time series. items: [{ label, value, text, color, note? }]
+export function cols(items, { unit = '' } = {}) {
+  const m = Math.max(...items.map((d) => d.value), 1e-9);
+  return `<div class="cols" role="img" aria-label="${esc(items.map((d) => `${d.label}: ${d.text}`).join('; '))}">${items.map((d) => `
+    <div class="cols__c" data-csv="${esc(JSON.stringify([d.label, 'Capacity price', d.value, unit]))}"><b>${esc(d.text)}</b><i style="--f:${(d.value / m).toFixed(4)};background:${d.color}"></i><span>${esc(d.label)}</span>${d.note ? `<em>${esc(d.note)}</em>` : ''}</div>`).join('')}</div>`;
+}
