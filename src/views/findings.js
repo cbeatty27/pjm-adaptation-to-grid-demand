@@ -258,8 +258,7 @@ export async function mount(root, data) {
       ${s.links ? `<div class="step__links">${s.links.map(([h, t], i) => `<a class="go${i === s.links.length - 1 ? ' go--light' : ''}" href="${h}">${esc(t)}</a>`).join('')}</div>` : ''}
     </section>`).join('')}
     <section class="step step--end">
-      <h3>What this does not prove</h3>
-      <p>These pictures show what changed and when. They do not prove who caused it: the government’s data does not say which customers use the power.</p>
+      <h3>Go further</h3>
       <div class="end__links"><a class="go" href="#/maps">Open the map</a><a class="go go--quiet" href="#/data">Explore all the data</a>${meta.has_us ? '<a class="go go--quiet" href="#/us">Compare with the whole U.S.</a>' : ''}<a class="go go--quiet" href="#/sources">Sources and method</a><button type="button" class="go go--quiet" id="storyCsv">Download the numbers (CSV)</button></div>
       <p class="end__src">Data: U.S. Energy Information Administration (EIA) and the IM3 Data Center Atlas. Latest month: ${esc(ymLabel(l.to))}.</p>
     </section>
