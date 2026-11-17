@@ -43,6 +43,7 @@ export async function mount(root, data) {
   root.innerHTML = `<div class="doc">
     <div class="doc__intro">
       <h2>All the data</h2>
+      <p><a href="#/data?show=county" id="xCountyLink">Jump to the county table</a>: data centers and new power plants in every county.</p>
       <p>Every hour, day, month and year of electricity demand and net generation by fuel that EIA publishes for the Lower 48 states and for PJM, since EIA began collecting it. Nothing here is compared, adjusted or explained: it is the data, so you can look at it first.</p>
       <p>Hours are as EIA reports them, apart from the impossible values listed under Sources and method. Days, months and years are the average of the hours present, in Eastern time, and every value is in megawatts so the intervals share one scale. Energy is that average times the hours (the table gives both).</p>
     </div>
@@ -259,6 +260,11 @@ export async function mount(root, data) {
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }  if (data.units && data.dcs) mountCountyTable(root.querySelector('#xCounty'), data, download);
+  // arriving with ?show=county: scroll to the table, and again once the charts above it have drawn and moved it
+  if (new URLSearchParams(location.hash.split('?')[1] || '').get('show') === 'county') {
+    const toTable = () => root.querySelector('#xCounty')?.scrollIntoView({ block: 'start' });
+    [50, 400, 1200].forEach((ms) => setTimeout(toTable, ms));
+  }
 
   let lastView = null, lastEx = null;
 

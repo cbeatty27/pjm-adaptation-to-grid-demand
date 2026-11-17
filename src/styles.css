@@ -423,3 +423,8 @@ main { flex: 1; min-height: 0; outline: none; }
 .step--end button.go { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 16px; }
 .ctable th, .ctable td { padding: 6px 12px; }
 .ctable tbody tr:nth-child(even) { background: var(--paper); }
+.step__links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.step__links .go { margin-top: 0; }
+.go--light { background: var(--accent-soft); color: var(--accent-ink); }
+.go--light:hover { background: #d6dcfb; }
+#xCounty { scroll-margin-top: 16px; }

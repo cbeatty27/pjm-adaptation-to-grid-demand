@@ -73,7 +73,7 @@ export async function mount(root, data) {
       say: same ? '' : `${stateName(geo.builder.s)}${geo.top[1]?.s === geo.builder.s ? ', second in data centers,' : ''} got the most new power plants. ${stateName(geo.lead.s)}, far ahead in data centers, got few.`,
       g: pairs(rows, { aLabel: 'Share of PJM-state data center building footprint', bLabel: 'Share of new PJM power plant capacity', unit: '%' }),
       cap: `Data centers are measured by the ground area of their buildings in the IM3 Data Center Atlas, added up for the PJM states. It is not their power use, which the atlas does not report.${geo.gasTop.length === 2 && geo.tGas > 0 ? ` ${(geo.gasTop[0].gas + geo.gasTop[1].gas) / geo.tGas > 0.95 ? 'Nearly all of the new gas plants' : `${gw(geo.gasTop[0].gas + geo.gasTop[1].gas)} of the ${gw(geo.tGas)} of new gas plants`} went to ${stateName(geo.gasTop[0].s)} and ${stateName(geo.gasTop[1].s)}.` : ''}`,
-      link: ['#/maps', 'See it on the map'] });
+      links: [[`#/maps?county=${encodeURIComponent(`${geo.hub.name},${geo.hub.st}`)}`, `See ${geo.hub.name.replace(/ County$/, '')} County on the map`], ...(same ? [] : [[`#/maps?state=${geo.builder.s}`, `See ${stateName(geo.builder.s)} on the map`]]), ['#/data?show=county', 'Compare every county']] });
   }
 
   // capacity of PJM generators that began operating after the release month (nameplate, or net summer with 'msum')
@@ -255,7 +255,7 @@ export async function mount(root, data) {
       ${s.say ? `<p class="step__say">${esc(s.say)}</p>` : ''}`}
       <p class="step__cap">${esc(s.cap)}</p>
       ${s.proof ? `<details class="proof" data-proof="${i + 1}"><summary>Show the full chart and how it was checked</summary><div></div></details>` : ''}
-      ${s.link ? `<a class="go" href="${s.link[0]}">${esc(s.link[1])}</a>` : ''}
+      ${s.links ? `<div class="step__links">${s.links.map(([h, t], i) => `<a class="go${i === s.links.length - 1 ? ' go--light' : ''}" href="${h}">${esc(t)}</a>`).join('')}</div>` : ''}
     </section>`).join('')}
     <section class="step step--end">
       <h3>What this does not prove</h3>

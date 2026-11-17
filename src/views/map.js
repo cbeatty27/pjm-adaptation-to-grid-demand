@@ -298,11 +298,7 @@ export async function mountMap(root, data, opt) {
           <ul class="find__list" id="findList" role="listbox" aria-label="Suggested places" hidden></ul>
         </form>
         <div class="find__out" id="findOut" aria-live="polite" hidden></div>
-        ${G ? `<div class="geo__tiles" role="group" aria-label="Jump to an area">
-          <button type="button" id="geoZoom"><em>${esc(G.hub.name)}, ${esc(G.hub.st)}</em><b>${nf0.format(hubMw)} MW</b><span>of new power plants in the county</span></button>
-          ${!same && G.bCenter ? `<button type="button" id="geoZoom2"><em>${esc(stateName(G.builder.s))}</em><b>${nf0.format(p(G.builder.add, G.tAdd))}%</b><span>of all new power plants</span></button>` : ''}
-        </div>` : ''}
-        <button type="button" class="geo__out" id="geoAll">Zoom back out</button>
+        <button type="button" class="geo__out" id="geoAll" hidden>Zoom back out</button>
         ${G ? `        <details class="fineprint"><summary>About these numbers</summary>
           <p>“Data centers” here means the ground area of data center buildings, in square feet, added up by state${US ? '' : ' for the PJM states only'}. It is not how much power they use: the atlas has no power figures and no opening dates.</p>
           <p>Shares of the ${US ? 'national' : 'PJM-state'} totals for the whole window, ${esc(ymLabel(indexYm(WIN + 1)))} to ${esc(ymLabel(indexYm(LATEST)))}; they do not follow the slider. ${rows.map((r) => `${esc(r.name)}: ${r.aText} of the data center building footprint and ${r.bText} of new power plant capacity.`).join(' ')} ${esc(stateName(G.lead.s))}: ${(G.lead.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.lead.add)} MW added (${nf0.format(G.lead.gas)} MW gas).${same ? '' : ` ${esc(stateName(G.builder.s))}: ${(G.builder.sqft / 1e6).toFixed(1)}M sq ft and ${nf0.format(G.builder.add)} MW added (${nf0.format(G.builder.gas)} MW gas, ${nf0.format(G.builder.solar)} MW solar); ${nf0.format(G.builder.ret)} MW retired there.`} Within 100 km of ${esc(G.hub.name)} (${(G.hub.sqft / 1e6).toFixed(1)}M sq ft): ${nf0.format(G.near.add)} MW added, ${nf0.format(G.near.solar)} MW of it solar.</p>
@@ -320,6 +316,7 @@ export async function mountMap(root, data, opt) {
       const dcIn = dcs.filter((d) => d.type === 'building' && d.lat != null && within(place, d.lon, d.lat));
       const upIn = winUnits.filter((u) => u.lat != null && within(place, u.lon, u.lat));
       const mw = sum(upIn.map((u) => u.mw || 0)), sq = sum(dcIn.map((d) => d.sqft || 0));
+      sec.querySelector('#geoAll').hidden = false;
       out.hidden = false;
       out.innerHTML = `<strong>${esc(title)}</strong>
         <div class="find__stats"><span><b>${sq >= 1e5 ? `${(sq / 1e6).toFixed(1)}M` : nf0.format(sq)}</b> sq ft of data center buildings</span><span><b>${mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${nf0.format(mw)} MW`}</b> of new power plants</span></div>
@@ -331,10 +328,20 @@ export async function mountMap(root, data, opt) {
       try { const pl = await loadPlaces(), place = find(pl); place ? highlight(place) : fail(missing); } catch { fail('The outlines could not be loaded. Reload the page to try again.'); }
     }
     if (G) {
-      sec.querySelector('#geoZoom').addEventListener('click', () => jump((pl) => findCounty(pl, G.hub.name, G.hub.st), 'No outline found for this county.'));
-      sec.querySelector('#geoZoom2')?.addEventListener('click', () => jump((pl) => findState(pl, G.builder.s), 'No outline found for this state.'));
     }
-    sec.querySelector('#geoAll').addEventListener('click', () => { map.getSource('hl')?.setData(none); out.hidden = true; fitAll(true); });
+    sec.querySelector('#geoAll').addEventListener('click', () => { map.getSource('hl')?.setData(none); out.hidden = true; sec.querySelector('#geoAll').hidden = true; fitAll(true); });
+    // Arriving from the story page with a place to show: #/maps?county=<name>,<ST> or #/maps?state=<ST>
+    const qs = new URLSearchParams(location.hash.split('?')[1] || '');
+    const wantCounty = qs.get('county'), wantState = qs.get('state');
+    if (wantCounty || wantState) {
+      const go = () => {
+        if (!map.getSource('hl')) { map.once('idle', go); return; }
+        if (wantState) jump((pl) => findState(pl, wantState.toUpperCase()), 'No outline found for this state.');
+        else { const i = wantCounty.lastIndexOf(','); jump((pl) => findCounty(pl, wantCounty.slice(0, i).trim(), wantCounty.slice(i + 1).trim().toUpperCase()), 'No outline found for this county.'); }
+      };
+      go();
+    }
+
     // Suggestions: with the box empty, the counties with the most data center building footprint; while typing, matching states and counties.
     const qEl = sec.querySelector('#findQ'), list = sec.querySelector('#findList');
     const byCounty = {};
