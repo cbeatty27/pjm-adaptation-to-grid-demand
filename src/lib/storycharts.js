@@ -62,6 +62,36 @@ export function floorChart(w, { years, base }) {
     pts: years.map((d, i) => ({ x: X(i), html: `<b>${esc(d.span)}</b>Quietest 100 hours: ${gwT(d.v)}` })) };
 }
 
+// Picture 2: a typical week, before and after. before, after: 168 hourly averages in MW, Monday midnight first
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const hr12 = (h) => (h === 0 ? 'midnight' : h === 12 ? 'noon' : h < 12 ? `${h} a.m.` : `${h - 12} p.m.`);
+export function weekChart(w, { before, after, q }) {
+  const narrow = w < 560, L = 56, R = w - 12, top = 20, bottom = narrow ? 290 : 320, h = bottom + 34;
+  const lo = Math.floor((Math.min(...before) - 3000) / 10000) * 10000, hi = Math.ceil((Math.max(...after) + 4000) / 10000) * 10000;
+  const X = (i) => L + ((R - L) * i) / 167, Y = (v) => bottom - ((bottom - top) * (v - lo)) / (hi - lo);
+  let s = '';
+  for (let d = 0; d < 7; d++) {
+    if (d >= 5) s += `<rect x="${X(d * 24).toFixed(1)}" y="${top}" width="${(X(Math.min(167, d * 24 + 24)) - X(d * 24)).toFixed(1)}" height="${bottom - top}" fill="#f1f2f7"/>`;
+    if (d) s += `<line x1="${X(d * 24).toFixed(1)}" x2="${X(d * 24).toFixed(1)}" y1="${top}" y2="${bottom}" stroke="#e6e8ee"/>`;
+    s += T(X(d * 24 + 12), bottom + 24, narrow ? DAYS[d].slice(0, 3) : DAYS[d]);
+  }
+  for (let v = lo; v <= hi; v += 10000) s += grid(L, R, Y(v), `${v / 1000} GW`);
+  const A = after.map((v, i) => [X(i), Y(v)]), B = before.map((v, i) => [X(i), Y(v)]);
+  s += `<path d="${path([...A, ...B.slice().reverse()])}Z" fill="${C.hot}" opacity=".13"/>`;
+  s += `<path d="${path(B)}" fill="none" stroke="${C.grey}" stroke-width="3" stroke-linejoin="round"/>`;
+  s += `<path d="${path(A)}" fill="none" stroke="${C.hot}" stroke-width="3.5" stroke-linejoin="round"/>`;
+  // the quietest hour of the week now, and how much more it needs than before
+  const xq = X(q), ya = Y(after[q]), yb = Y(before[q]);
+  s += `<line x1="${xq.toFixed(1)}" x2="${xq.toFixed(1)}" y1="${(ya + 3).toFixed(1)}" y2="${(yb - 3).toFixed(1)}" stroke="${C.ink}" stroke-width="2"/><circle cx="${xq.toFixed(1)}" cy="${ya.toFixed(1)}" r="4.5" fill="${C.hot}" stroke="#fff" stroke-width="2"/><circle cx="${xq.toFixed(1)}" cy="${yb.toFixed(1)}" r="4.5" fill="${C.grey}" stroke="#fff" stroke-width="2"/>`;
+  const qd = Math.floor(q / 24), lab = `+${((after[q] - before[q]) / 1000).toFixed(1)} GW at ${hr12(q % 24)} ${narrow ? DAYS[qd].slice(0, 3) : DAYS[qd]}`;
+  s += T(xq - 10, yb + 22, lab, { a: 'end', fs: narrow ? 13 : 14, w: 700, c: C.ink, halo: true });
+  // series names, next to their lines on Wednesday afternoon and early Wednesday morning
+  const pk = 2 * 24 + 15, nt = 2 * 24 + 3;
+  if (!narrow) s += T(X(pk), Y(after[pk]) - 12, 'Latest 12 months', { fs: 14, w: 700, c: C.hot, halo: true }) + T(X(nt), Y(before[nt]) + 22, '12 months before ChatGPT', { fs: 14, w: 700, c: C.mute, halo: true });
+  return { svg: s, h, top, bottom, aria: `Average electricity use for each hour of the week: the latest 12 months run ${((after[q] - before[q]) / 1000).toFixed(1)} gigawatts higher even at the quietest hour`,
+    pts: after.map((v, i) => ({ x: X(i), html: `<b>${DAYS[Math.floor(i / 24)]}, ${hr12(i % 24)}</b>Before: ${gwT(before[i])}<br>Now: ${gwT(v)} (${sgn(v - before[i])})` })) };
+}
+
 // Picture 4: growth in average use and in solar output at each hour of the day. d, s: 24 values in MW (midnight first)
 export function hourChart(w, { d, s: sol }) {
   const narrow = w < 560, L = 52, R = w - 16, top = 16, bottom = narrow ? 260 : 320, h = bottom + 30;

@@ -8,7 +8,7 @@ import { loadExplorer, loadHourly, loadPlanned, loadExtra } from '../lib/data.js
 import { bars, pairs, cols, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
 import { twoMaps } from '../lib/twomaps.js';
-import { live, floorChart, hourChart, runChart, crossing, key } from '../lib/storycharts.js';
+import { live, weekChart, hourChart, runChart, crossing, key } from '../lib/storycharts.js';
 
 const gw = (mw, d = 1) => `${(Math.abs(mw) / 1000).toFixed(d)} GW`;
 const ymAdd = (ym, k) => indexYm(ymIndex(ym) + k);
@@ -37,34 +37,28 @@ export async function mount(root, data) {
   const sped = f && f.significant && f.dSlope > 0;
   const steps = []; // { h, g, cap, proof?, link? }
 
-  // 2. round the clock: the average of the 100 quietest hours (EIA-930 hourly demand) in each 12-month year ending in the
-  // same month as the latest window, back to the first full year of hourly data
-  const ML = (ym) => `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
-  let floor = null;
+  // 2. round the clock: a typical week, the average of every week in the 12 months before the release against the latest
+  // 12 months (EIA-930 hourly demand, Eastern Standard Time), so no single hot or cold week decides the picture
+  let wk = null;
   try {
-    const endY = Number(l.to.slice(0, 4)), endM = Number(l.to.slice(5, 7));
-    const yrs = []; for (let y = 2015; y <= endY + (endM === 12 ? 1 : 0); y++) yrs.push(y);
+    const span = (w) => [Date.UTC(Number(w.from.slice(0, 4)), Number(w.from.slice(5, 7)) - 1, 1, 5), Date.UTC(Number(w.to.slice(0, 4)), Number(w.to.slice(5, 7)), 1, 5)];
+    const yrs = [...new Set([b, l].flatMap((w) => [Number(w.from.slice(0, 4)), Number(w.to.slice(0, 4)), Number(w.to.slice(0, 4)) + (w.to.slice(5, 7) === '12' ? 1 : 0)]))];
     const files = (await Promise.all(yrs.map((y) => loadHourly('pjm', y).catch(() => null)))).filter(Boolean);
-    const rows = files.flatMap((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`); return h.demand_mw.map((d, i) => [t0 + i * 36e5, d]); }).filter(([, d]) => d != null && d > 20000);
-    const out = [];
-    for (let y = endY; y > 2000; y--) {
-      const to = Date.UTC(y, endM, 1, 5), from = Date.UTC(y - 1, endM, 1, 5);
-      const v = rows.filter(([t]) => t >= from && t < to).map(([, d]) => d);
-      if (v.length < 8000) break;
-      v.sort((a, c) => a - c);
-      const endYm = `${y}-${String(endM).padStart(2, '0')}`, startYm = endM === 12 ? `${y}-01` : `${y - 1}-${String(endM + 1).padStart(2, '0')}`;
-      out.unshift({ y, v: v.slice(0, 100).reduce((a, x) => a + x, 0) / 100, pre: endYm < RELEASE, span: `${ML(startYm)} – ${ML(endYm)}` });
-    }
-    const pre = out.filter((d) => d.pre);
-    if (out.length >= 6 && pre.length >= 3 && pre.length < out.length) floor = { years: out, base: pre.reduce((a, d) => a + d.v, 0) / pre.length };
-  } catch { floor = null; }
-  if (floor) {
-    const lastF = floor.years[floor.years.length - 1], rise = lastF.v - floor.base;
-    steps.push({ h: `Even in its quietest hours, the grid now needs ${Math.round(rise / 1000)} GW more.`,
-      draw: (host) => live(host, (w) => floorChart(w, floor)),
-      g: `<div hidden data-csv="${esc(JSON.stringify(floor.years.map((d) => [d.span, 'Average of the 100 quietest hours', d.v, 'MW'])))}"></div>`,
-      say: `For years, PJM’s quietest hours, mostly mild nights, needed about ${Math.round(floor.base / 1000)} GW. Now they need ${Math.round(lastF.v / 1000)} GW. Hot afternoons and cold snaps don’t explain that: this demand is there around the clock.`,
-      cap: `Each point is the average of the 100 lowest-demand hours in a 12-month year ending in ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][Number(l.to.slice(5, 7)) - 1]}; the dashed line is the average of the years before ChatGPT’s release.${fLow && fLow.significant && fLow.post > 0 && f ? ` Since the release, the quietest hour of each month has risen ${gw(fLow.post)} a year, nearly as fast as the average hour (${gw(f.post)}).` : ''} Touch the chart to read any year.`,
+    const week = (w) => { const [from, to] = span(w), sm = new Array(168).fill(0), ct = new Array(168).fill(0);
+      files.forEach((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`); h.demand_mw.forEach((d, i) => { const t = t0 + i * 36e5; if (d == null || d < 20000 || t < from || t >= to) return; const lt = new Date(t - 5 * 36e5), k = ((lt.getUTCDay() + 6) % 7) * 24 + lt.getUTCHours(); sm[k] += d; ct[k]++; }); });
+      return ct.every((c) => c >= 40) ? sm.map((v, i) => v / ct[i]) : null; };
+    const before = week(b), after = week(l);
+    if (before && after) { const q = after.indexOf(Math.min(...after)); wk = { before, after, q }; }
+  } catch { wk = null; }
+  if (wk) {
+    const gap = wk.after.map((v, i) => v - wk.before[i]), gq = gap[wk.q], minGap = Math.min(...gap), maxGap = Math.max(...gap);
+    const DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Math.floor(wk.q / 24)], hq = wk.q % 24;
+    const when = `${hq === 0 ? 'midnight' : hq < 12 ? `${hq} a.m.` : hq === 12 ? 'noon' : `${hq - 12} p.m.`} on a ${DAY}`;
+    steps.push({ h: `Every hour of the week now needs more power, even ${when}.`,
+      draw: (host) => live(host, (w) => weekChart(w, wk)),
+      g: `${key([[C.hot, 'Latest 12 months'], [C.grey, '12 months before ChatGPT']])}<div hidden data-csv="${esc(JSON.stringify(wk.after.flatMap((v, i) => [[`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Math.floor(i / 24)]} ${String(i % 24).padStart(2, '0')}:00`, '12 months before the release', wk.before[i], 'MW'], [`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Math.floor(i / 24)]} ${String(i % 24).padStart(2, '0')}:00`, 'Latest 12 months', v, 'MW']])))}"></div>`,
+      say: `A typical week now runs ${Math.round(minGap / 1000)} to ${Math.round(maxGap / 1000)} GW higher than before ChatGPT, nights and weekends included. At its quietest hour, ${when}, the grid needs ${gw(gq)} more.`,
+      cap: `Average electricity use at each hour of the week (Eastern Standard Time), averaged over every week of the 12 months before ChatGPT’s release (${ymLabel(b.from)} to ${ymLabel(b.to)}) and the latest 12 months (${ymLabel(l.from)} to ${ymLabel(l.to)}). Averaging a whole year keeps one hot or cold week from deciding the picture; nights are higher in every season.${fLow && fLow.significant && fLow.post > 0 && f ? ` Since the release, the quietest hour of each month has risen ${gw(fLow.post)} a year, nearly as fast as the average hour (${gw(f.post)}).` : ''} Weekends are shaded. Touch the chart to read any hour.`,
       proof: (host) => [loadShapeFigure(host, { demand, scope: 'PJM', series: 'respondent PJM' })] });
   } else if (f && fLow && fLow.significant && fLow.post > 0) {
     steps.push({ h: 'The new demand never switches off.',
