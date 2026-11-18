@@ -156,6 +156,54 @@ export function runChart(w, { months, demand, build, close }) {
     pts: months.map((m, i) => ({ x: X(i), html: `<b>${ml(m)}</b>Demand: ${sgn(demand[i])}<br>Built: ${sgn(build[i])}<br>Closed: −${gwT(close[i])}` })) };
 }
 
+// Bridge (waterfall) chart. items: [{ label: [line1, line2], v (MW), kind: 'add' | 'cut' | 'total' }]
+// 'add' widens the gap, 'cut' narrows it, 'total' is the result. Values are labelled directly, so there is no y axis.
+export function bridge(w, items) {
+  const narrow = w < 560, L = 8, R = w - 8, top = 34, bottom = narrow ? 230 : 280;
+  // wrap each label line to the width of its column
+  const maxCh = Math.max(6, Math.floor((R - L) / items.length / (narrow ? 6.6 : 7.4)));
+  const wrap = (t) => t.split(' ').reduce((acc, wd) => { const last = acc[acc.length - 1]; if (last && (last + ' ' + wd).length <= maxCh) acc[acc.length - 1] = `${last} ${wd}`; else acc.push(wd); return acc; }, []);
+  const lines = items.map((it) => it.label.filter(Boolean).flatMap((ln, j) => wrap(ln).map((t) => ({ t, sub: j > 0 }))));
+  const h = bottom + 26 + 17 * Math.max(...lines.map((x) => x.length));
+  let run = 0;
+  const bars = items.map((it) => { const from = it.kind === 'total' ? 0 : run, to = it.kind === 'total' ? it.v : run + (it.kind === 'cut' ? -it.v : it.v); if (it.kind !== 'total') run = to; return { ...it, from, to }; });
+  const hi = Math.max(...bars.map((b) => Math.max(b.from, b.to))) * 1.08, Y = (v) => bottom - ((bottom - top) * v) / hi;
+  const slot = (R - L) / bars.length, bw = Math.min(narrow ? 58 : 96, slot * 0.58);
+  const col = { add: '#3b4763', cut: '#c3c8d4', total: C.hot };
+  let s = `<line x1="${L}" x2="${R}" y1="${bottom}" y2="${bottom}" stroke="#9aa1b2" stroke-width="1"/>`;
+  bars.forEach((b, i) => {
+    const cx = L + slot * (i + 0.5), x = cx - bw / 2, y0 = Y(Math.max(b.from, b.to)), y1 = Y(Math.min(b.from, b.to));
+    s += `<rect x="${x.toFixed(1)}" y="${y0.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, y1 - y0).toFixed(1)}" fill="${col[b.kind]}" rx="2"/>`;
+    if (i < bars.length - 1) { const nx = L + slot * (i + 1.5) - bw / 2; s += `<line x1="${(x + bw).toFixed(1)}" x2="${nx.toFixed(1)}" y1="${Y(b.to).toFixed(1)}" y2="${Y(b.to).toFixed(1)}" stroke="#9aa1b2" stroke-dasharray="3 3"/>`; }
+    const val = b.kind === 'total' ? `${(b.v / 1000).toFixed(1)} GW` : `${b.kind === 'cut' ? '−' : '+'}${(b.v / 1000).toFixed(1)}`;
+    s += T(cx, y0 - 10, val, { fs: b.kind === 'total' ? (narrow ? 17 : 20) : (narrow ? 15 : 17), w: 800, c: b.kind === 'total' ? C.hot : C.ink });
+    lines[i].forEach((ln, j) => { s += T(cx, bottom + 22 + j * 17, ln.t, { fs: narrow ? (ln.sub ? 11.5 : 12.5) : (ln.sub ? 13 : 14), w: ln.sub ? 500 : 650, c: ln.sub ? C.mute : C.ink }); });
+  });
+  return { svg: s, h, top, bottom, aria: items.map((it) => `${it.label.join(' ')}: ${(it.v / 1000).toFixed(1)} GW`).join('; '), pts: [] };
+}
+
+// Horizontal bridge: rows build up to a total, then the rows after it fill the total back down to zero.
+// rows: [{ label, v (MW), kind: 'add' | 'total' | 'fill', hl }]; hl marks the row the headline is about.
+export function hbridge(w, rows) {
+  const narrow = w < 600, labW = narrow ? 0 : 250, L = labW, R = w - (narrow ? 64 : 84);
+  const rowH = narrow ? 50 : 40, top = 4, h = top + rows.length * rowH + 4;
+  let run = 0;
+  const bs = rows.map((r) => { let a, b; if (r.kind === 'add') { a = run; b = run + r.v; run = b; } else if (r.kind === 'total') { a = 0; b = r.v; run = r.v; } else { a = run - r.v; b = run; run = a; } return { ...r, a: Math.min(a, b), b: Math.max(a, b) }; });
+  const hi = Math.max(...bs.map((r) => r.b)), X = (v) => L + ((R - L) * Math.max(0, v)) / hi;
+  let s = `<line x1="${X(0).toFixed(1)}" x2="${X(0).toFixed(1)}" y1="${top}" y2="${h - 4}" stroke="#9aa1b2"/>`;
+  bs.forEach((r, i) => {
+    const y = top + i * rowH, barY = y + (narrow ? 22 : 8), bh = narrow ? 20 : 24;
+    const col = r.hl ? C.hot : r.kind === 'total' ? C.ink : r.kind === 'add' ? '#5d6880' : '#c3c8d4';
+    if (r.kind === 'total') s += `<line x1="0" x2="${w}" y1="${(y + 1).toFixed(1)}" y2="${(y + 1).toFixed(1)}" stroke="#e6e8ee"/><line x1="0" x2="${w}" y1="${(y + rowH - 1).toFixed(1)}" y2="${(y + rowH - 1).toFixed(1)}" stroke="#e6e8ee"/>`;
+    s += `<rect x="${X(r.a).toFixed(1)}" y="${barY}" width="${Math.max(2, X(r.b) - X(r.a)).toFixed(1)}" height="${bh}" fill="${col}" rx="2"/>`;
+    if (i < bs.length - 1) { const nx = bs[i + 1]; const edge = r.kind === 'fill' ? r.a : r.b; s += `<line x1="${X(edge).toFixed(1)}" x2="${X(edge).toFixed(1)}" y1="${barY + bh}" y2="${top + (i + 1) * rowH + (narrow ? 22 : 8)}" stroke="#9aa1b2" stroke-dasharray="2 3"/>`; void nx; }
+    const lab = T(narrow ? 0 : 0, narrow ? y + 15 : barY + bh / 2 + 5, r.label, { a: 'start', fs: narrow ? 13.5 : 15, w: r.hl || r.kind === 'total' ? 700 : 500, c: r.hl ? C.hot : C.ink });
+    const val = `${r.kind === 'fill' ? '−' : r.kind === 'add' ? '+' : ''}${(r.v / 1000).toFixed(1)}${r.kind === 'total' ? ' GW' : ''}`;
+    s += lab + T(X(r.b) + 8, barY + bh / 2 + 5, val, { a: 'start', fs: narrow ? 14 : 15.5, w: 800, c: r.hl ? C.hot : C.ink });
+  });
+  return { svg: s, h, top, bottom: h, aria: rows.map((r) => `${r.label}: ${(r.v / 1000).toFixed(1)} GW`).join('; '), pts: [] };
+}
+
 // The month from which plants closing outweigh plants being built for good, and a plain label for it ('Late 2028')
 export function crossing(months, build, close) {
   const n = months.length - 1;
