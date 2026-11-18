@@ -48,6 +48,7 @@ export async function mount(root, data) {
   const up = dem(b.avg_mw, l.avg_mw);
   const sped = f && f.significant && f.dSlope > 0;
   const steps = []; // { h, g, cap, proof?, link? }
+  const sum = {}; // headline numbers for the summary at the top
 
   // 2. round the clock: real weeks, then and now. Every Monday-to-Sunday week in the 12 months before the release is
   // paired with the same weekdays 208 weeks (about four years) later (EIA-930 hourly demand, Eastern Standard Time).
@@ -105,6 +106,7 @@ export async function mount(root, data) {
   const tz = zs.reduce((a, r) => a + r.d, 0);
   if (zs.length > 4 && tz > 0) {
     const two = zs.slice(0, 2), rest = tz - two[0].d - two[1].d, share2 = (100 * (two[0].d + two[1].d)) / tz;
+    sum.share2 = share2;
     const restBase = zs.slice(2).reduce((a, r) => a + r.base, 0);
     const PLACE = { DOM: 'Dominion (Virginia)', AEP: 'AEP (Ohio and its neighbors)' };
     const nm = (r) => PLACE[r.z] || r.short;
@@ -239,6 +241,7 @@ export async function mount(root, data) {
         const rowsB = [{ label: 'New demand', v: d.d, kind: 'add' }, ...downs.map((x) => ({ label: `Less power from ${x.label.toLowerCase()}`, v: -x.x, kind: 'add' })), { label: 'Gap to fill', v: gap, kind: 'total' },
           ...fills.map((u) => ({ label: fillLab[u.k] || u.label, v: u.x, kind: 'fill', hl: u.k === 'gasOld' }))];
         const oldTop = fills[0]?.k === 'gasOld';
+        sum.oldTop = oldTop;
         steps.push({ key: 'slack', h: oldTop ? 'Old gas plants, running harder, filled more of the gap than anything else.' : `What is picking up the slack? ${ups.slice(0, 2).map((x) => (x.k === 'gas' ? 'Gas' : x.label)).join(' first, then ')}.`,
           draw: (host) => live(host, (w) => hbridge(w, rowsB)),
           g: `<div hidden data-csv="${esc(JSON.stringify(rowsB.map((x) => ['Latest 12 months vs. the 12 before the release', x.label, x.kind === 'fill' ? -x.v : x.v, 'MW'])))}"></div>`,
@@ -310,6 +313,7 @@ export async function mount(root, data) {
         const n = months.length - 1, cx = crossing(months, run.build, run.close);
         const runCsv = months.filter((m, i) => m.endsWith('-12') || i === 0).flatMap((m) => { const i = months.indexOf(m); return [[m, 'Demand growth from today', run.demand[i], 'MW'], [m, 'Plants being built, running total', run.build[i], 'MW'], [m, 'Plants closing, running total', run.close[i], 'MW']]; });
         const gap = run.demand[n] - run.build[n] + run.close[n];
+        sum.cross = cx.txt;
         // plant size on paper (capacity) next to what those plants actually produce on an average hour
         const buildCap = UC.filter((u) => u.online <= horizon).reduce((x, u) => x + (u.mw || 0), 0);
         const closeCap = closing.reduce((x, u) => x + (u.mw || 0), 0);
@@ -350,22 +354,35 @@ export async function mount(root, data) {
   // order of the argument: demand (1-3), then supply: what was built, what filled the gap, where it was built, what is coming
   { const w = steps.findIndex((x) => x.key === 'where'), k = steps.findIndex((x) => x.key === 'slack'); if (w >= 0 && k > w) steps.splice(k, 0, steps.splice(w, 1)[0]); }
 
+  // The short version: the answer first, in three parts, each jumping to its pictures
+  const lastA = pjmr?.auctions?.[pjmr.auctions.length - 1];
+  const idxOf = (k) => steps.findIndex((x) => (x.id || x.key) === k) + 2;
+  function execSummary() {
+    const cards = [
+      ['Demand', `Use is up ${Math.abs(up).toFixed(0)}% (${gw(l.avg_mw - b.avg_mw)}) since ChatGPT, it runs around the clock${sum.share2 ? `, and ${nf0.format(sum.share2)}% of the growth is in Virginia and Ohio` : ''}.`, 1, idxOf('zones') || 3],
+      ['Response', `${sum.oldTop ? 'Old gas plants running harder did the most to keep up.' : 'Gas did the most to keep up.'} Solar helps only at midday, and new plants are being built far from the new demand.`, idxOf('solar') || 4, idxOf('where') || 6],
+      ['Outlook', `${sum.cross ? `From ${sum.cross.toLowerCase()}, plant closures outpace new plants.` : 'Plant closures outpace new plants.'}${lastA?.short_mw ? ` PJM’s own auction for ${lastA.delivery_year.replace('/', '–').replace(/–20/, '–')} is already ${gw(lastA.short_mw)} short of its reliability target.` : ''}`, idxOf('coming') || 7, idxOf('enough') || 8],
+    ];
+    return `<section class="exec" aria-label="The short version"><h2 class="exec__h">The short version</h2><div class="exec__grid">${cards.map(([t, x, a, z]) => `<button type="button" class="exec__card" data-goto="${a}"><b>${esc(t)}</b><span class="exec__txt">${esc(x)}</span><span class="exec__go">Pictures ${a}–${z}</span></button>`).join('')}</div></section>`;
+  }
+
   root.innerHTML = `<article class="story">
     <header class="hero">
       <h2>${sped ? 'Electricity use was flat for years. Then it started climbing.' : `Electricity use is ${Math.abs(up).toFixed(0)}% ${up >= 0 ? 'higher' : 'lower'} than before ChatGPT.`}</h2>
-      <p>PJM runs the power grid for 13 states and Washington, D.C. Since ChatGPT came out in November 2022, electricity use there is <strong>${up >= 0 ? 'up' : 'down'} ${Math.abs(up).toFixed(0)}%</strong>. Here is what changed, in ${steps.length + 1} pictures.</p>
+      <p>PJM runs the power grid for 13 states and Washington, D.C. Since ChatGPT came out in November 2022, electricity use there is <strong>${up >= 0 ? 'up' : 'down'} ${Math.abs(up).toFixed(0)}%</strong>.</p>
+      ${execSummary()}
       <p class="hero__gw"><b>1 GW</b> (gigawatt) is a measure of power: about what ${homes(1000)} average American homes use at once, or one large nuclear reactor. The growth since ChatGPT’s release is ${gw(l.avg_mw - b.avg_mw)}, about ${homes(l.avg_mw - b.avg_mw)} homes’ worth.</p>
     </header>
-    <section class="step step--hero">
+    <section class="step step--hero" data-n="1">
       <span class="step__n" aria-hidden="true">1</span>
       <h3>${sped ? `Electricity use is climbing ${pct((100 * f.post) / b.avg_mw).replace('+', '')} a year, after years of no growth.` : 'Electricity use before and after ChatGPT.'}</h3>
       <p class="step__unit">Average electricity use in PJM, 12-month average, GW</p>
       <div id="heroLine"></div>
-      ${f ? `<p class="step__say">Before ChatGPT: ${pct((100 * f.pre) / b.avg_mw)} a year. Since: ${pct((100 * f.post) / b.avg_mw)} a year.${fW ? ` Taking out the effect of hot summers and cold winters: ${pct((100 * fW.post) / b.avg_mw)} a year, give or take ${((100 * 1.96 * fW.sePost) / b.avg_mw).toFixed(1)}%.` : ''}</p>` : ''}
-      <p class="step__foot"><span>Note: Dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading.${fW ? ' Weather adjustment uses heating and cooling degree days; “give or take” is a 95% range.' : ''}</span><span>Source: EIA-930 hourly demand; EIA Short-Term Energy Outlook (degree days).</span></p>
+      ${f ? `<p class="step__say">${fW ? `Weather doesn’t explain it: with hot summers and cold winters taken out, use is still climbing ${pct((100 * fW.post) / b.avg_mw).replace('+', '')} a year.` : `Before ChatGPT: ${pct((100 * f.pre) / b.avg_mw)} a year. Since: ${pct((100 * f.post) / b.avg_mw)} a year.`}</p>` : ''}
+      <p class="step__foot"><span>Note: Dashed lines are the trend before and after ChatGPT’s release; the dotted line is where the earlier trend was heading.${fW ? ` Weather adjustment uses heating and cooling degree days (${pct((100 * fW.post) / b.avg_mw)} a year, give or take ${((100 * 1.96 * fW.sePost) / b.avg_mw).toFixed(1)}%, 95% range).` : ''}</span><span>Source: EIA-930 hourly demand; EIA Short-Term Energy Outlook (degree days).</span></p>
       <details class="proof" data-proof="0"><summary>Method and full data</summary><div></div></details>
     </section>
-    ${steps.map((s, i) => `<section class="step">
+    ${steps.map((s, i) => `<section class="step" data-n="${i + 2}">
       <span class="step__n" aria-hidden="true">${i + 2}</span>
       <h3>${esc(s.h)}</h3>
       ${(s.unit || META[s.id || s.key]?.unit) ? `<p class="step__unit">${esc(s.unit || META[s.id || s.key].unit)}</p>` : ''}
@@ -402,6 +419,8 @@ export async function mount(root, data) {
   steps.forEach((s, i) => { if (s.draw) { const host = root.querySelector(`[data-draw="${i}"]`); if (host) parts.push(s.draw(host)); } });
 
   root.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-goto]');
+    if (go) { root.querySelector(`.step[data-n="${go.dataset.goto}"]`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); return; }
     if (e.target.closest('#storyCsv')) {
       // every bar on the page, as drawn: picture, headline, view, row, measure, value
       const out = [['picture', 'headline', 'view', 'row', 'measure', 'value', 'unit'].join(',')];

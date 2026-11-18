@@ -71,6 +71,14 @@ export async function mount(root, data) {
     ['Clean energy push', { solar: 8, wind: 2, storage: 4 }],
   ];
   const state = { ...base };
+  // a scenario can be shared as a link: #/whatif?growth=3&gas=50 ...
+  const KEYS = ['growth', 'gas', 'closures', 'solar', 'wind', 'storage'];
+  try {
+    const qs = new URLSearchParams((location.hash.split('?')[1]) || '');
+    KEYS.forEach((k) => { if (qs.has(k) && Number.isFinite(Number(qs.get(k)))) state[k] = Number(qs.get(k)); });
+    if (qs.get('pjm') === '1' && hasFc) state.pjm = true;
+  } catch { /* ignore a malformed link */ }
+  const shareUrl = () => { const qs = new URLSearchParams(); KEYS.forEach((k) => qs.set(k, state[k])); if (state.pjm) qs.set('pjm', '1'); return `${location.origin}${location.pathname}#/whatif?${qs}`; };
 
   const T28 = ymIndex(`${DY[0]}-06`), A28 = pjmr.auctions?.[pjmr.auctions.length - 1];
   const short0 = A28?.short_mw || 0;
@@ -131,8 +139,8 @@ export async function mount(root, data) {
 
   root.innerHTML = `<div class="whatif">
     <header class="wi__head"><h2>What if?</h2>
-      <p>Move the sliders to see whether PJM would have enough power by 2030. It starts from today’s measured trends and the plants owners have reported to the government.</p></header>
-    <div class="wi__presets" role="group" aria-label="Scenarios">${PRESETS.map(([n], i) => `<button type="button" class="chip" data-preset="${i}" aria-pressed="${i === 0}">${esc(n)}</button>`).join('')}</div>
+      <p><b>Will PJM have enough power by 2030, and which lever matters most?</b> Pick a scenario or move the sliders. Every starting value comes from measured trends or PJM’s own published numbers.</p></header>
+    <div class="wi__presets" role="group" aria-label="Scenarios">${PRESETS.map(([n], i) => `<button type="button" class="chip" data-preset="${i}" aria-pressed="${i === 0 && location.hash.indexOf('?') < 0}">${esc(n)}</button>`).join('')}<button type="button" class="chip wi__share" id="wiShare">Copy link to this scenario</button></div>
     <div class="wi__grid">
       <section class="wi__panel" aria-label="Assumptions">
         <h3>Demand</h3>
@@ -195,6 +203,7 @@ export async function mount(root, data) {
   }
 
   function draw() {
+    try { history.replaceState(null, '', shareUrl()); } catch { /* not allowed in some embeds */ }
     for (const k of Object.keys(unitOf)) { const el = $(`wo_${k}`); if (el) el.textContent = k === 'growth' && state.pjm ? 'PJM forecast' : `${state[k]}${unitOf[k]}`; }
     $('wiPjmNote').hidden = !state.pjm;
     const tg = target(state), rows = model(state), last = tg[tg.length - 1];
@@ -224,7 +233,13 @@ export async function mount(root, data) {
     root.querySelectorAll('[data-preset]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
     draw();
   });
-  root.addEventListener('click', (e) => {
+  root.addEventListener('click', async (e) => {
+    if (e.target.closest('#wiShare')) {
+      const btn = e.target.closest('#wiShare'), url = shareUrl();
+      try { await navigator.clipboard.writeText(url); btn.textContent = 'Link copied'; } catch { window.prompt('Copy this link', url); }
+      setTimeout(() => { btn.textContent = 'Copy link to this scenario'; }, 2000);
+      return;
+    }
     const b = e.target.closest('[data-preset]'); if (!b) return;
     Object.assign(state, base, PRESETS[Number(b.dataset.preset)][1]);
     root.querySelectorAll('[data-k]').forEach((inp) => { inp.value = state[inp.dataset.k]; });
