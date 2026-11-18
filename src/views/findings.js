@@ -37,28 +37,58 @@ export async function mount(root, data) {
   const sped = f && f.significant && f.dSlope > 0;
   const steps = []; // { h, g, cap, proof?, link? }
 
-  // 2. round the clock: a typical week, the average of every week in the 12 months before the release against the latest
-  // 12 months (EIA-930 hourly demand, Eastern Standard Time), so no single hot or cold week decides the picture
+  // 2. round the clock: real weeks, then and now. Every Monday-to-Sunday week in the 12 months before the release is
+  // paired with the same weekdays 208 weeks (about four years) later (EIA-930 hourly demand, Eastern Standard Time).
+  // The page opens on the middle week (the median change) and the reader can pick any other, so no week is hand-picked.
   let wk = null;
   try {
-    const span = (w) => [Date.UTC(Number(w.from.slice(0, 4)), Number(w.from.slice(5, 7)) - 1, 1, 5), Date.UTC(Number(w.to.slice(0, 4)), Number(w.to.slice(5, 7)), 1, 5)];
-    const yrs = [...new Set([b, l].flatMap((w) => [Number(w.from.slice(0, 4)), Number(w.to.slice(0, 4)), Number(w.to.slice(0, 4)) + (w.to.slice(5, 7) === '12' ? 1 : 0)]))];
+    const yrs = []; for (let y = Number(b.from.slice(0, 4)); y <= Number(l.to.slice(0, 4)) + 1; y++) yrs.push(y);
     const files = (await Promise.all(yrs.map((y) => loadHourly('pjm', y).catch(() => null)))).filter(Boolean);
-    const week = (w) => { const [from, to] = span(w), sm = new Array(168).fill(0), ct = new Array(168).fill(0);
-      files.forEach((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`); h.demand_mw.forEach((d, i) => { const t = t0 + i * 36e5; if (d == null || d < 20000 || t < from || t >= to) return; const lt = new Date(t - 5 * 36e5), k = ((lt.getUTCDay() + 6) % 7) * 24 + lt.getUTCHours(); sm[k] += d; ct[k]++; }); });
-      return ct.every((c) => c >= 40) ? sm.map((v, i) => v / ct[i]) : null; };
-    const before = week(b), after = week(l);
-    if (before && after) { const q = after.indexOf(Math.min(...after)); wk = { before, after, q }; }
+    const at = new Map();
+    files.forEach((h) => { const t0 = Date.parse(`${h.start_utc}:00:00Z`); h.demand_mw.forEach((d, i) => { if (d != null && d > 20000) at.set(t0 + i * 36e5, d); }); });
+    const H = 36e5, DAYMS = 24 * H, OFF = 208 * 7 * DAYMS;
+    const week = (t) => { const v = []; for (let i = 0; i < 168; i++) { const d = at.get(t + i * H); if (d == null) return null; v.push(d); } return v; };
+    let t = Date.UTC(Number(b.from.slice(0, 4)), Number(b.from.slice(5, 7)) - 1, 1, 5);
+    while (new Date(t - 5 * H).getUTCDay() !== 1) t += DAYMS;
+    const stop = Date.UTC(Number(b.to.slice(0, 4)), Number(b.to.slice(5, 7)), 1, 5);
+    const pairs = [];
+    const fmtD = (ms) => { const d = new Date(ms - 5 * H); return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; };
+    for (; t < stop; t += 7 * DAYMS) {
+      const before = week(t), after = week(t + OFF);
+      if (!before || !after) continue;
+      const avg = (v) => v.reduce((a, x) => a + x, 0) / 168, q = after.indexOf(Math.min(...after));
+      pairs.push({ before, after, q, change: avg(after) - avg(before), quiet: Math.min(...after) - Math.min(...before), bDate: fmtD(t), aDate: fmtD(t + OFF), bYear: new Date(t - 5 * H).getUTCFullYear(), aYear: new Date(t + OFF - 5 * H).getUTCFullYear(), mon: new Date(t - 5 * H).getUTCMonth() });
+    }
+    if (pairs.length >= 40) {
+      const order = pairs.map((p, i) => i).sort((x, c) => pairs[x].change - pairs[c].change);
+      wk = { pairs, mid: order[Math.floor(order.length / 2)], up: pairs.filter((p) => p.change > 0).length, upQ: pairs.filter((p) => p.quiet > 0).length };
+    }
   } catch { wk = null; }
   if (wk) {
-    const gap = wk.after.map((v, i) => v - wk.before[i]), gq = gap[wk.q], minGap = Math.min(...gap), maxGap = Math.max(...gap);
-    const DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Math.floor(wk.q / 24)], hq = wk.q % 24;
-    const when = `${hq === 0 ? 'midnight' : hq < 12 ? `${hq} a.m.` : hq === 12 ? 'noon' : `${hq - 12} p.m.`} on a ${DAY}`;
-    steps.push({ h: `Every hour of the week now needs more power, even ${when}.`,
-      draw: (host) => live(host, (w) => weekChart(w, wk)),
-      g: `${key([[C.hot, 'Latest 12 months'], [C.grey, '12 months before ChatGPT']])}<div hidden data-csv="${esc(JSON.stringify(wk.after.flatMap((v, i) => [[`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Math.floor(i / 24)]} ${String(i % 24).padStart(2, '0')}:00`, '12 months before the release', wk.before[i], 'MW'], [`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Math.floor(i / 24)]} ${String(i % 24).padStart(2, '0')}:00`, 'Latest 12 months', v, 'MW']])))}"></div>`,
-      say: `A typical week now runs ${Math.round(minGap / 1000)} to ${Math.round(maxGap / 1000)} GW higher than before ChatGPT, nights and weekends included. At its quietest hour, ${when}, the grid needs ${gw(gq)} more.`,
-      cap: `Average electricity use at each hour of the week (Eastern Standard Time), averaged over every week of the 12 months before ChatGPT’s release (${ymLabel(b.from)} to ${ymLabel(b.to)}) and the latest 12 months (${ymLabel(l.from)} to ${ymLabel(l.to)}). Averaging a whole year keeps one hot or cold week from deciding the picture; nights are higher in every season.${fLow && fLow.significant && fLow.post > 0 && f ? ` Since the release, the quietest hour of each month has risen ${gw(fLow.post)} a year, nearly as fast as the average hour (${gw(f.post)}).` : ''} Weekends are shaded. Touch the chart to read any hour.`,
+    const P = wk.pairs, n = P.length;
+    const yrsApart = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'][P[wk.mid].aYear - P[wk.mid].bYear] || String(P[wk.mid].aYear - P[wk.mid].bYear);
+    const hiV = Math.max(...P.map((p) => p.change)), loV = Math.min(0, ...P.map((p) => p.change)), zero = (100 * hiV) / (hiV - loV);
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const strip = `<div class="wkpick"><p class="wkpick__label">Every week compared. Each bar is one week: how much higher the whole week ran than the same week ${yrsApart} years earlier. Tap a bar to see that week.</p>
+      <div class="wkpick__wrap"><div class="wkpick__bars" role="group" aria-label="Pick a week" style="--zero:${zero.toFixed(1)}%">${P.map((p, i) => `<button type="button" data-wk="${i}" aria-pressed="${i === wk.mid}" aria-label="Week of ${esc(p.bDate)}: ${p.change >= 0 ? 'up' : 'down'} ${(Math.abs(p.change) / 1000).toFixed(1)} GW on average" title="Week of ${esc(p.bDate)}: ${p.change >= 0 ? '+' : '−'}${(Math.abs(p.change) / 1000).toFixed(1)} GW"><i class="${p.change < 0 ? 'is-down' : ''}" style="${p.change >= 0 ? `bottom:${(100 - zero).toFixed(1)}%;height:${((100 * p.change) / (hiV - loV)).toFixed(1)}%` : `top:${zero.toFixed(1)}%;height:${((100 * -p.change) / (hiV - loV)).toFixed(1)}%`}"></i></button>`).join('')}</div>
+      <div class="wkpick__scale"><span style="top:0">+${Math.round(hiV / 1000)} GW</span><span style="top:${zero.toFixed(1)}%">0</span></div></div>
+      <div class="wkpick__axis">${P.map((p, i) => (i === 0 || p.mon !== P[i - 1].mon ? `<span style="left:${((100 * (i + 0.5)) / n).toFixed(2)}%">${MON[p.mon]}</span>` : '')).join('')}</div></div>`;
+    steps.push({ h: `In ${wk.upQ} of ${n} weeks, even the quietest hour needed more power than ${yrsApart} years before.`,
+      draw: (host) => {
+        host.innerHTML = '<p class="wkhead" aria-live="polite"></p><div class="wkchart"></div>';
+        let sel = wk.mid;
+        const head = host.querySelector('.wkhead');
+        const label = () => { const p = P[sel]; head.innerHTML = `<span><i style="background:${C.hot}"></i>Week of ${esc(p.aDate)}</span><span><i style="background:${C.grey}"></i>Week of ${esc(p.bDate)}</span><b>${sel === wk.mid ? 'The middle week: half of all weeks rose more, half less' : `Whole week ${p.change >= 0 ? 'up' : 'down'} ${(Math.abs(p.change) / 1000).toFixed(1)} GW on average`}</b>`; };
+        const chart = live(host.querySelector('.wkchart'), (w) => { const p = P[sel]; return weekChart(w, { ...p, aName: String(p.aYear), bName: String(p.bYear), aShort: String(p.aYear), bShort: String(p.bYear) }); });
+        label();
+        const pick = host.closest('.step').querySelector('.wkpick');
+        const onPick = (e) => { const bt = e.target.closest('[data-wk]'); if (!bt) return; sel = Number(bt.dataset.wk); pick.querySelectorAll('[data-wk]').forEach((x) => x.setAttribute('aria-pressed', String(x === bt))); label(); chart.redraw(); };
+        pick?.addEventListener('click', onPick);
+        return { destroy: () => { chart.destroy(); pick?.removeEventListener('click', onPick); } };
+      },
+      g: `${strip}<div hidden data-csv="${esc(JSON.stringify(P.map((p) => [`Week of ${p.bDate} vs week of ${p.aDate}`, 'Change in average demand', p.change, 'MW'])))}"></div>`,
+      say: `Week to week, the weather moves demand up and down: a cold snap ${yrsApart} years ago can make a single week look lower today. But in ${wk.up} of ${n} weeks the whole week ran higher, and in ${wk.upQ} of ${n} even the quietest hour did.`,
+      cap: `Each pair is a real Monday-to-Sunday week from the 12 months before ChatGPT’s release (${ymLabel(b.from)} to ${ymLabel(b.to)}) and the same weekdays ${yrsApart} years later, hour by hour (Eastern Standard Time). The chart opens on the middle week, so it is not the best or worst case. ${n} weeks had complete data in both years.${fLow && fLow.significant && fLow.post > 0 && f ? ` Over the whole record, the quietest hour of each month has risen ${gw(fLow.post)} a year since the release, nearly as fast as the average hour (${gw(f.post)}).` : ''} Touch the chart to read any hour.`,
       proof: (host) => [loadShapeFigure(host, { demand, scope: 'PJM', series: 'respondent PJM' })] });
   } else if (f && fLow && fLow.significant && fLow.post > 0) {
     steps.push({ h: 'The new demand never switches off.',
