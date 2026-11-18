@@ -62,7 +62,10 @@ def power(errors: list[str]) -> tuple[list[list], list[str]]:
                 if not hub or not day or not wavg:
                     errors.append(f"{year}: unexpected columns {list(df.columns)[:12]}")
                     continue
-                sub = df[df[hub].astype(str).str.contains("PJM WH", case=False, na=False)]
+                sub = df[df[hub].astype(str).str.contains("PJM WH", case=False, na=False)].copy()
+                for c in (wavg, hi, lo, vol):  # some files store numbers as text with thousands separators
+                    if c:
+                        sub[c] = pd.to_numeric(sub[c].astype(str).str.replace(",", "").str.strip(), errors="coerce")
                 for _, x in sub.iterrows():
                     d = pd.to_datetime(x[day], errors="coerce")
                     if pd.isna(d) or pd.isna(x[wavg]):
