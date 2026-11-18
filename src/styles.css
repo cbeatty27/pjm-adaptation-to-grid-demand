@@ -568,3 +568,5 @@ main { flex: 1; min-height: 0; outline: none; }
 .wi__tnone { font-size: 13px; color: var(--ink-2); background: var(--paper); border-radius: 8px; padding: 8px 10px; line-height: 1.4; }
 .wi__trow { grid-template-columns: 190px 1fr; }
 @media (max-width: 600px) { .wi__trow { grid-template-columns: 1fr; gap: 4px; } }
+.wi__ttrack { margin: 0 96px; } @media (max-width: 600px) { .wi__ttrack { margin: 0 84px; } }
+.wi__taxis .wi__ttrack { height: 42px; }

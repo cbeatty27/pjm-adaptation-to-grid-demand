@@ -131,18 +131,18 @@ export async function mount(root, data) {
   const paceOf = { solar: recent.solar / 1000, wind: recent.wind / 1000, storage: recent.storage / 1000 };
   const r1n = (v) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
   // gaps are straight lines in each setting, so the setting that closes the gap is found exactly from two points
+  // the setting where this lever, on its own, moves PJM from short of its target to meeting it (or back)
   function need(k, st, a, b, lo, hi) {
-    const g0 = lastGap(st);
-    if (g0 <= 0) return 'Target already met';
+    const g0 = lastGap(st), met = g0 <= 0;
     const slope = (b - a) / (hi - lo);
-    if (Math.abs(slope) < 1e-6) return 'No effect at the busiest hour: these plants already run flat out then';
+    if (Math.abs(slope) < 1e-6) return '';
     const v = st[k] - g0 / slope;
-    if (!(v >= LIM[k][0] && v <= LIM[k][1])) return k === 'growth' ? 'Even zero growth from here leaves a gap' : 'Can’t close the gap on its own';
-    if (k === 'growth') return `Alone, closes the gap only if growth falls to ${r1n(v)} GW a year`;
-    if (k === 'gas') return `Alone, closes the gap at ${Math.round(v)}% of planned gas built`;
-    if (k === 'closures') return `Alone, closes the gap only if ${Math.round(v)}% of closures happen`;
+    if (!(v >= LIM[k][0] && v <= LIM[k][1])) return met ? 'Target stays met at any setting' : (k === 'growth' ? 'Short even with zero growth from here' : 'Short at any setting, on its own');
     const p = paceOf[k];
-    return `Alone, closes the gap at ${r1n(v)} GW a year${p > 0.05 ? `, ${Math.round(v / p)}× today’s pace` : ''}`;
+    const val = k === 'growth' ? `${r1n(v)} GW a year` : k === 'gas' || k === 'closures' ? `${Math.round(v)}%` : `${r1n(v)} GW a year${p > 0.05 ? ` (${Math.round(v / p)}× today’s pace)` : ''}`;
+    // which side of the break-even point means the target is met
+    const metAbove = slope < 0;
+    return `Target met at ${metAbove ? 'or above' : 'or below'} ${val}`;
   }
   const lastGap = (s) => target(s)[DY.length - 1].gap;
   function swings(s) {
@@ -192,7 +192,7 @@ export async function mount(root, data) {
           <div><h4>Against PJM’s reliability target</h4><p class="wi__sub">At the busiest hour, by delivery year (June to May)</p><div id="wiPeak"></div></div>
           <div><h4>On an average hour</h4><p class="wi__sub">Change from today, by the end of each year</p><div id="wiAvg"></div></div>
         </div>
-        <div class="wi__tor"><h4>Which assumption matters most?</h4><p class="wi__sub">How far each one moves the ${dyLab(DY[DY.length - 1])} result, from a low to a high setting, with the others as chosen above</p><div id="wiTor"></div></div>
+        <div class="wi__tor"><h4>Which assumption matters most?</h4><p class="wi__sub">For ${dyLab(DY[DY.length - 1])}: how far short of (or above) PJM’s target each setting leaves you, moving one at a time from low to high with the others as chosen above. The black line is your scenario.</p><div id="wiTor"></div></div>
         <details class="fineprint wi__how"><summary>What goes into these numbers</summary><div id="wiTable"></div></details>
       </section>
     </div>
@@ -225,14 +225,15 @@ export async function mount(root, data) {
   // ranked bars: each lever from its low to its high setting, on one scale, with the current result marked
   function tornado(rows, cur) {
     const vals = rows.flatMap((r) => [r.a, r.b]).concat(cur), lo = Math.min(...vals, 0), hi = Math.max(...vals, 0), X = (v) => (100 * (v - lo)) / (hi - lo || 1);
-    return `<div class="wi__torrows" role="img" aria-label="${esc(rows.map((r) => `${r.name}, ${r.range}: ${fmtGW(r.a)} to ${fmtGW(r.b)} short`).join('; '))}">${rows.map((r) => {
+    const sv = (v) => (v > 0 ? `${fmtGW(v)} short` : `${fmtGW(-v)} spare`);
+    return `<div class="wi__torrows" role="img" aria-label="${esc(rows.map((r) => `${r.name}, ${r.range}: ${sv(r.a)} to ${sv(r.b)}`).join('; '))}">${rows.map((r) => {
       const l = Math.min(r.a, r.b), h = Math.max(r.a, r.b);
       const lowEnd = r.a <= r.b ? r.loTxt : r.hiTxt, highEnd = r.a <= r.b ? r.hiTxt : r.loTxt;
       if (Math.abs(r.b - r.a) < 50) return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small></span><span class="wi__tnone">No change at the busiest hour. Plants that already exist are running flat out then, so running them harder only helps on an average hour.</span></div>`;
-      return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small><em class="wi__need">${esc(r.need)}</em></span>
+      return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small>${r.need ? `<em class="wi__need">${esc(r.need)}</em>` : ''}</span>
         <span class="wi__ttrack"><i style="left:${X(l)}%;width:${Math.max(0.6, X(h) - X(l))}%"></i><u style="left:${X(cur)}%"></u>
-          <b class="lo" style="right:calc(${100 - X(l)}% + 6px)">${fmtGW(l)}<small>${esc(lowEnd)}</small></b><b class="hi" style="left:calc(${X(h)}% + 6px)">${fmtGW(h)}<small>${esc(highEnd)}</small></b></span></div>`;
-    }).join('')}<div class="wi__trow wi__taxis"><span></span><span class="wi__ttrack"><em style="left:${X(cur)}%">Your scenario: ${fmtGW(cur)} short</em>${lo < 0 ? `<em class="zero" style="left:${X(0)}%">Target met</em>` : ''}</span></div></div>`;
+          <b class="lo" style="right:calc(${100 - X(l)}% + 6px)">${sv(l)}<small>at ${esc(lowEnd)}</small></b><b class="hi" style="left:calc(${X(h)}% + 6px)">${sv(h)}<small>at ${esc(highEnd)}</small></b></span></div>`;
+    }).join('')}<div class="wi__trow wi__taxis"><span></span><span class="wi__ttrack"><em style="left:${X(cur)}%">Your scenario: ${sv(cur)}</em>${lo < 0 ? `<em class="zero" style="left:${X(0)}%">Target met</em>` : ''}</span></div></div>`;
   }
 
   function draw() {
