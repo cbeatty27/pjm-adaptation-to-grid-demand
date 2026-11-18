@@ -29,6 +29,7 @@ export async function mount(root, data) {
   const run = cg?.windows?.[cg.windows.length - 1]?.groups || {};
   const avgRate = { gas: run.gas?.cf || 0.43, coal: run.coal?.cf || 0.48, nuclear: run.nuclear?.cf || 0.93, wind: run.wind?.cf || 0.32, hydro: run.hydro?.cf || 0.21, solar: solarCheck?.latest12?.cf_eia923 || run.solar?.cf || 0.21, storage: 0, other: 0 };
   const E = pjmr.elcc.ratings;
+  const gasFleet = run.gas?.cap_mw || 0, gasRate = run.gas?.cf || avgRate.gas; // existing gas fleet and how hard it runs now
   const peakRate = (u) => {
     const t = String(u.tech || '');
     if (u.group === 'gas') return /Combined Cycle/i.test(t) ? E.gas_cc : u.tech ? E.gas_ct : E.gas_cc;
@@ -56,7 +57,7 @@ export async function mount(root, data) {
   // PJM's track record: share of the capacity it studied since 2020 that reached a signed agreement to connect
   const q = pjmr.queue, track = q?.since_2020_processed_gw ? q.since_2020_signed_gw / q.since_2020_processed_gw : 0.35;
   const trackPct = Math.round((100 * track) / 5) * 5;
-  const base = { growth: r1(pace / 1000), gas: trackPct, closures: 100, solar: r1(recent.solar / 1000), wind: r1(recent.wind / 1000), storage: r1(recent.storage / 1000), pjm: false };
+  const base = { growth: r1(pace / 1000), gas: trackPct, closures: 100, solar: r1(recent.solar / 1000), wind: r1(recent.wind / 1000), storage: r1(recent.storage / 1000), harder: 0, pjm: false };
   // PJM's own summer peak forecast (2026 load forecast report), by year
   const fc = pjmr.forecast?.summer_peak_mw || {};
   const fcAt = (x) => { const ks = Object.keys(fc).map(Number).sort((a, c) => a - c); if (ks.length < 2) return null; let i = ks.findIndex((k) => k >= x); if (i < 0) i = ks.length - 1; if (i === 0) i = 1; const a = ks[i - 1], c = ks[i]; return fc[a] + ((fc[c] - fc[a]) * (x - a)) / (c - a); };
@@ -72,7 +73,7 @@ export async function mount(root, data) {
   ];
   const state = { ...base };
   // a scenario can be shared as a link: #/whatif?growth=3&gas=50 ...
-  const KEYS = ['growth', 'gas', 'closures', 'solar', 'wind', 'storage'];
+  const KEYS = ['growth', 'gas', 'closures', 'solar', 'wind', 'storage', 'harder'];
   try {
     const qs = new URLSearchParams((location.hash.split('?')[1]) || '');
     KEYS.forEach((k) => { if (qs.has(k) && Number.isFinite(Number(qs.get(k)))) state[k] = Number(qs.get(k)); });
@@ -110,8 +111,9 @@ export async function mount(root, data) {
       const reA = newYrs * 1000 * (s.solar * avgRate.solar + s.wind * avgRate.wind);
       const now = t0 / 12 + 1 / 24; // today as a fractional year
       const needA = s.pjm && hasFc ? peakGrowth(s, now - 0.5, y + 0.5) / peakRatio : s.growth * 1000 * yrs;
-      const supA = ucA + gasA + reA - clA;
-      return { y, label: String(y), gap: needA - supA, needA, supA, parts: { ucA, gasA, reA, clA } };
+      const hdA = (s.harder / 100) * gasFleet;
+      const supA = ucA + gasA + reA + hdA - clA;
+      return { y, label: String(y), gap: needA - supA, needA, supA, parts: { ucA, gasA, reA, clA, hdA } };
     });
   }
 
@@ -123,19 +125,47 @@ export async function mount(root, data) {
     ['solar', 'New solar a year', 0, 8, (v) => `${v} GW`],
     ['wind', 'New wind a year', 0, 2, (v) => `${v} GW`],
     ['storage', 'New batteries a year', 0, 4, (v) => `${v} GW`],
+    ['harder', 'Existing gas runs harder', 0, 10, (v) => `+${v} points`],
   ];
+  const LIM = { growth: [0, Infinity], gas: [0, 100], closures: [0, 100], solar: [0, Infinity], wind: [0, Infinity], storage: [0, Infinity], harder: [0, 100 - 100 * gasRate] };
+  const paceOf = { solar: recent.solar / 1000, wind: recent.wind / 1000, storage: recent.storage / 1000 };
+  const r1n = (v) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
+  // gaps are straight lines in each setting, so the setting that closes the gap is found exactly from two points
+  function need(k, st, a, b, lo, hi) {
+    const g0 = lastGap(st);
+    if (g0 <= 0) return 'Target already met';
+    const slope = (b - a) / (hi - lo);
+    if (Math.abs(slope) < 1e-6) return 'No effect at the busiest hour: these plants already run flat out then';
+    const v = st[k] - g0 / slope;
+    if (!(v >= LIM[k][0] && v <= LIM[k][1])) return k === 'growth' ? 'Even zero growth from here leaves a gap' : 'Can’t close the gap on its own';
+    if (k === 'growth') return `Alone, closes the gap only if growth falls to ${r1n(v)} GW a year`;
+    if (k === 'gas') return `Alone, closes the gap at ${Math.round(v)}% of planned gas built`;
+    if (k === 'closures') return `Alone, closes the gap only if ${Math.round(v)}% of closures happen`;
+    const p = paceOf[k];
+    return `Alone, closes the gap at ${r1n(v)} GW a year${p > 0.05 ? `, ${Math.round(v / p)}× today’s pace` : ''}`;
+  }
   const lastGap = (s) => target(s)[DY.length - 1].gap;
   function swings(s) {
     return LEVERS.map(([k, name, lo, hi, f]) => {
       const st = { ...s, ...(k === 'growth' ? { pjm: false } : {}) };
-      return { k, name, range: `${f(lo)} to ${f(hi)}`, a: lastGap({ ...st, [k]: lo }), b: lastGap({ ...st, [k]: hi }), loTxt: f(lo), hiTxt: f(hi) };
+      const a = lastGap({ ...st, [k]: lo }), b = lastGap({ ...st, [k]: hi });
+      return { k, name, range: `${f(lo)} to ${f(hi)}`, a, b, loTxt: f(lo), hiTxt: f(hi), need: need(k, st, a, b, lo, hi) };
     }).sort((x, c) => Math.abs(c.b - c.a) - Math.abs(x.b - x.a));
   }
 
+  const SRC = {
+    growth: 'EIA-930 hourly demand, trend since Dec 2022 (story picture 1)',
+    gas: 'EIA-860M planned plants; PJM Inside Lines on its connection queue',
+    solar: 'EIA-860M, plants opened since Dec 2022',
+    wind: 'EIA-860M, plants opened since Dec 2022',
+    storage: 'EIA-860M, plants opened since Dec 2022',
+    closures: 'EIA-860M announced retirements',
+    harder: 'EIA-930 and EIA-923 running rates (story picture 5)',
+  };
   const slider = (k, label, min, max, step, unit, hint) => `<div class="wi__ctl">
       <label for="wi_${k}"><span>${esc(label)}</span><output id="wo_${k}"></output></label>
       <input type="range" id="wi_${k}" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${state[k]}">
-      <small>${esc(hint)}</small><i hidden>${unit}</i></div>`;
+      <small>${esc(hint)}</small>${SRC[k] ? `<small class="wi__src">Source: ${esc(SRC[k])}</small>` : ''}<i hidden>${unit}</i></div>`;
 
   root.innerHTML = `<div class="whatif">
     <header class="wi__head"><h2>What if?</h2>
@@ -152,6 +182,8 @@ export async function mount(root, data) {
         ${slider('wind', 'New wind each year from 2028', 0, 4, 0.1, 'GW', `Pace since 2022: ${r1(recent.wind / 1000)} GW a year`)}
         ${slider('storage', 'New batteries each year from 2028', 0, 6, 0.1, 'GW', `Pace since 2022: ${r1(recent.storage / 1000)} GW a year`)}
         ${slider('closures', 'Announced closures that happen', 0, 100, 5, '%', `${nf0.format(closing.reduce((x, u) => x + (u.mw || 0), 0) / 100) / 10} GW of plants are due to close by the end of ${YEARS[YEARS.length - 1]}`)}
+        <h3>Existing plants</h3>
+        ${slider('harder', 'Existing gas plants run harder', 0, 10, 1, 'points', `Today PJM’s ${nf0.format(gasFleet / 1000)} GW gas fleet runs at ${nf0.format(100 * gasRate)}% of its limit. Each extra point adds about ${(gasFleet / 100000).toFixed(1)} GW on an average hour, and nothing at the busiest hour.`)}
         <p class="wi__fixed">Always included: ${nf0.format(uc.reduce((x, u) => x + (u.mw || 0), 0) / 100) / 10} GW of plants already under construction, on their reported dates.</p>
       </section>
       <section class="wi__out" aria-live="polite">
@@ -175,7 +207,7 @@ export async function mount(root, data) {
 
   const $ = (id) => root.querySelector(`#${id}`);
   const fmtGW = (v) => `${v < 0 ? '−' : ''}${(Math.abs(v) / 1000).toFixed(1)} GW`;
-  const unitOf = { growth: ' GW a year', gas: '%', closures: '%', solar: ' GW', wind: ' GW', storage: ' GW' };
+  const unitOf = { growth: ' GW a year', gas: '%', closures: '%', solar: ' GW', wind: ' GW', storage: ' GW', harder: ' points' };
 
   // Bars share one scale across both charts (passed in as m). One-sided when every year falls the same way.
   function barsFor(rows, m) {
@@ -196,7 +228,8 @@ export async function mount(root, data) {
     return `<div class="wi__torrows" role="img" aria-label="${esc(rows.map((r) => `${r.name}, ${r.range}: ${fmtGW(r.a)} to ${fmtGW(r.b)} short`).join('; '))}">${rows.map((r) => {
       const l = Math.min(r.a, r.b), h = Math.max(r.a, r.b);
       const lowEnd = r.a <= r.b ? r.loTxt : r.hiTxt, highEnd = r.a <= r.b ? r.hiTxt : r.loTxt;
-      return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small></span>
+      if (Math.abs(r.b - r.a) < 50) return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small></span><span class="wi__tnone">No change at the busiest hour. Plants that already exist are running flat out then, so running them harder only helps on an average hour.</span></div>`;
+      return `<div class="wi__trow"><span class="wi__tname">${esc(r.name)}<small>${esc(r.range)}</small><em class="wi__need">${esc(r.need)}</em></span>
         <span class="wi__ttrack"><i style="left:${X(l)}%;width:${Math.max(0.6, X(h) - X(l))}%"></i><u style="left:${X(cur)}%"></u>
           <b class="lo" style="right:calc(${100 - X(l)}% + 6px)">${fmtGW(l)}<small>${esc(lowEnd)}</small></b><b class="hi" style="left:calc(${X(h)}% + 6px)">${fmtGW(h)}<small>${esc(highEnd)}</small></b></span></div>`;
     }).join('')}<div class="wi__trow wi__taxis"><span></span><span class="wi__ttrack"><em style="left:${X(cur)}%">Your scenario: ${fmtGW(cur)} short</em>${lo < 0 ? `<em class="zero" style="left:${X(0)}%">Target met</em>` : ''}</span></div></div>`;
@@ -221,6 +254,7 @@ export async function mount(root, data) {
       <tr><td>Plants under construction</td><td class="num">−${fmtGW(p.ucP)}</td><td class="num">−${fmtGW(pa.ucA)}</td></tr>
       <tr><td>Planned gas</td><td class="num">−${fmtGW(p.gasP)}</td><td class="num">−${fmtGW(pa.gasA)}</td></tr>
       <tr><td>New solar, wind and batteries</td><td class="num">−${fmtGW(p.reP)}</td><td class="num">−${fmtGW(pa.reA)}</td></tr>
+      <tr><td>Existing gas running harder</td><td class="num">−0.0 GW (no room at the peak)</td><td class="num">−${fmtGW(pa.hdA)}</td></tr>
       <tr><td>Plants closing</td><td class="num">+${fmtGW(p.clP)}</td><td class="num">+${fmtGW(pa.clA)}</td></tr>
       <tr><td><b>Short (+) or spare (−)</b></td><td class="num"><b>${fmtGW(last.gap)}</b></td><td class="num"><b>${fmtGW(a.gap)}</b></td></tr></tbody></table>
       <p>Supply counts only after June ${DY[0]} in the first column (earlier plants are in the auction result) and after ${esc(ymLabel(startYm))} in the second.</p>`;
