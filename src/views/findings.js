@@ -67,28 +67,17 @@ export async function mount(root, data) {
   if (wk) {
     const P = wk.pairs, n = P.length;
     const yrsApart = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'][P[wk.mid].aYear - P[wk.mid].bYear] || String(P[wk.mid].aYear - P[wk.mid].bYear);
-    const hiV = Math.max(...P.map((p) => p.change)), loV = Math.min(0, ...P.map((p) => p.change)), zero = (100 * hiV) / (hiV - loV);
-    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const strip = `<div class="wkpick"><p class="wkpick__label">Every week compared. Each bar is one week: how much higher the whole week ran than the same week ${yrsApart} years earlier. Tap a bar to see that week.</p>
-      <div class="wkpick__wrap"><div class="wkpick__bars" role="group" aria-label="Pick a week" style="--zero:${zero.toFixed(1)}%">${P.map((p, i) => `<button type="button" data-wk="${i}" aria-pressed="${i === wk.mid}" aria-label="Week of ${esc(p.bDate)}: ${p.change >= 0 ? 'up' : 'down'} ${(Math.abs(p.change) / 1000).toFixed(1)} GW on average" title="Week of ${esc(p.bDate)}: ${p.change >= 0 ? '+' : '−'}${(Math.abs(p.change) / 1000).toFixed(1)} GW"><i class="${p.change < 0 ? 'is-down' : ''}" style="${p.change >= 0 ? `bottom:${(100 - zero).toFixed(1)}%;height:${((100 * p.change) / (hiV - loV)).toFixed(1)}%` : `top:${zero.toFixed(1)}%;height:${((100 * -p.change) / (hiV - loV)).toFixed(1)}%`}"></i></button>`).join('')}</div>
-      <div class="wkpick__scale"><span style="top:0">+${Math.round(hiV / 1000)} GW</span><span style="top:${zero.toFixed(1)}%">0</span></div></div>
-      <div class="wkpick__axis">${P.map((p, i) => (i === 0 || p.mon !== P[i - 1].mon ? `<span style="left:${((100 * (i + 0.5)) / n).toFixed(2)}%">${MON[p.mon]}</span>` : '')).join('')}</div></div>`;
-    steps.push({ h: `In ${wk.upQ} of ${n} weeks, even the quietest hour needed more power than ${yrsApart} years before.`,
+    const M = P[wk.mid], qh = M.q % 24, qDay = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Math.floor(M.q / 24)];
+    const qWhen = `${qh === 0 ? 'midnight' : qh < 12 ? `${qh} a.m.` : qh === 12 ? 'noon' : `${qh - 12} p.m.`} on ${qDay}`;
+    const range = (d) => d.replace(/, \d{4}$/, '');
+    steps.push({ h: 'Even the quietest hours now need more power.',
       draw: (host) => {
-        host.innerHTML = '<p class="wkhead" aria-live="polite"></p><div class="wkchart"></div>';
-        let sel = wk.mid;
-        const head = host.querySelector('.wkhead');
-        const label = () => { const p = P[sel]; head.innerHTML = `<span><i style="background:${C.hot}"></i>Week of ${esc(p.aDate)}</span><span><i style="background:${C.grey}"></i>Week of ${esc(p.bDate)}</span><b>${sel === wk.mid ? 'The middle week: half of all weeks rose more, half less' : `Whole week ${p.change >= 0 ? 'up' : 'down'} ${(Math.abs(p.change) / 1000).toFixed(1)} GW on average`}</b>`; };
-        const chart = live(host.querySelector('.wkchart'), (w) => { const p = P[sel]; return weekChart(w, { ...p, aName: String(p.aYear), bName: String(p.bYear), aShort: String(p.aYear), bShort: String(p.bYear) }); });
-        label();
-        const pick = host.closest('.step').querySelector('.wkpick');
-        const onPick = (e) => { const bt = e.target.closest('[data-wk]'); if (!bt) return; sel = Number(bt.dataset.wk); pick.querySelectorAll('[data-wk]').forEach((x) => x.setAttribute('aria-pressed', String(x === bt))); label(); chart.redraw(); };
-        pick?.addEventListener('click', onPick);
-        return { destroy: () => { chart.destroy(); pick?.removeEventListener('click', onPick); } };
+        host.innerHTML = `<p class="wkhead"><span><i style="background:${C.hot}"></i>Week of ${esc(range(M.aDate))}, ${M.aYear}</span><span><i style="background:${C.grey}"></i>Same week, ${M.bYear}</span></p><div class="wkchart"></div>`;
+        return live(host.querySelector('.wkchart'), (w) => weekChart(w, { ...M, aName: '', aShort: String(M.aYear), bShort: String(M.bYear) }));
       },
-      g: `${strip}<div hidden data-csv="${esc(JSON.stringify(P.map((p) => [`Week of ${p.bDate} vs week of ${p.aDate}`, 'Change in average demand', p.change, 'MW'])))}"></div>`,
-      say: `Week to week, the weather moves demand up and down: a cold snap ${yrsApart} years ago can make a single week look lower today. But in ${wk.up} of ${n} weeks the whole week ran higher, and in ${wk.upQ} of ${n} even the quietest hour did.`,
-      cap: `Each pair is a real Monday-to-Sunday week from the 12 months before ChatGPT’s release (${ymLabel(b.from)} to ${ymLabel(b.to)}) and the same weekdays ${yrsApart} years later, hour by hour (Eastern Standard Time). The chart opens on the middle week, so it is not the best or worst case. ${n} weeks had complete data in both years.${fLow && fLow.significant && fLow.post > 0 && f ? ` Over the whole record, the quietest hour of each month has risen ${gw(fLow.post)} a year since the release, nearly as fast as the average hour (${gw(f.post)}).` : ''} Touch the chart to read any hour.`,
+      g: `<div hidden data-csv="${esc(JSON.stringify(P.map((p) => [`Week of ${p.bDate} vs week of ${p.aDate}`, 'Change in average demand', p.change, 'MW'])))}"></div>`,
+      say: `At ${qWhen}, the quietest hour of this week, PJM needed ${gw(M.after[M.q] - M.before[M.q])} more than ${yrsApart} years earlier.`,
+      cap: `A real week, hour by hour. It is the middle week of the year, not the best one: in ${wk.upQ} of ${n} weeks, the quietest hour was higher than ${yrsApart} years before.`,
       proof: (host) => [loadShapeFigure(host, { demand, scope: 'PJM', series: 'respondent PJM' })] });
   } else if (f && fLow && fLow.significant && fLow.post > 0) {
     steps.push({ h: 'The new demand never switches off.',
