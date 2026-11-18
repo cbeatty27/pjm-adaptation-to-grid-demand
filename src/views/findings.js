@@ -8,7 +8,7 @@ import { loadExplorer, loadHourly, loadPlanned, loadExtra } from '../lib/data.js
 import { bars, pairs, cols, mountLine, C, homes } from '../lib/story.js';
 import { pjmGeo, stateName } from '../lib/geo.js';
 import { twoMaps } from '../lib/twomaps.js';
-import { live, weekChart, hourChart, runChart, crossing, key, bridge, hbridge } from '../lib/storycharts.js';
+import { live, weekChart, hourChart, runChart, crossing, key, bridge, hbridge, monthLine } from '../lib/storycharts.js';
 
 const gw = (mw, d = 1) => `${(Math.abs(mw) / 1000).toFixed(d)} GW`;
 const ymAdd = (ym, k) => indexYm(ymIndex(ym) + k);
@@ -353,6 +353,38 @@ export async function mount(root, data) {
 
   // order of the argument: demand (1-3), then supply: what was built, what filled the gap, where it was built, what is coming
   { const w = steps.findIndex((x) => x.key === 'where'), k = steps.findIndex((x) => x.key === 'slack'); if (w >= 0 && k > w) steps.splice(k, 0, steps.splice(w, 1)[0]); }
+
+  // 9. day-to-day power prices against the price of gas (EIA wholesale data, republished from ICE; EIA Henry Hub)
+  const ws = await loadExtra('wholesale_pjm').catch(() => null);
+  if (ws?.power?.monthly?.length >= 48 && ws?.gas?.monthly?.length >= 48) {
+    const pm = new Map(ws.power.monthly.map(([m, v]) => [m, v])), gm = new Map(ws.gas.monthly.map(([m, v]) => [m, v]));
+    const months = [...pm.keys()].filter((m) => gm.has(m)).sort();
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const ml = (m) => `${MON[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+    const pts = [];
+    for (let i = 11; i < months.length; i++) {
+      const win = months.slice(i - 11, i + 1);
+      if (ymIndex(win[11]) - ymIndex(win[0]) !== 11) continue; // twelve consecutive months only
+      const pw = win.reduce((a, m) => a + pm.get(m), 0) / 12, gs = win.reduce((a, m) => a + gm.get(m), 0) / 12;
+      pts.push({ m: months[i], v: pw / gs, pw, gs, html: `<b>12 months to ${ml(months[i])}</b>Power: $${pw.toFixed(0)}/MWh<br>Gas: $${gs.toFixed(2)}/MMBtu<br>Ratio: ${(pw / gs).toFixed(1)}×` });
+    }
+    const pre = pts.filter((p) => p.m <= '2021-12');
+    if (pts.length >= 24 && pre.length >= 12) {
+      const base = pre.reduce((a, p) => a + p.v, 0) / pre.length, lastP = pts[pts.length - 1];
+      // the same comparison leaving out winter months, when the regional gas price can run far above Henry Hub
+      const noWinter = (a, b) => { const ks = months.filter((m) => m >= a && m <= b && ![12, 1, 2].includes(Number(m.slice(5, 7)))); const pw = ks.reduce((x, m) => x + pm.get(m), 0) / ks.length, gs = ks.reduce((x, m) => x + gm.get(m), 0) / ks.length; return pw / gs; };
+      const nwBase = noWinter('2017-01', '2021-12'), nwLast = noWinter(ymAdd(lastP.m, -11), lastP.m);
+      const fx = (v) => `${Math.round(v)}×`;
+      steps.push({ id: 'energy', h: lastP.v / base >= 1.8 ? `Power prices have pulled away from gas: ${fx(lastP.v)} the gas price, about double the old ${fx(base)}.` : `Power now sells for ${fx(lastP.v)} the gas price, up from ${fx(base)}.`,
+        unit: 'PJM wholesale power price divided by the natural gas price, 12-month average',
+        draw: (host) => live(host, (w) => monthLine(w, { pts, base, baseLab: `2017–2021: about ${fx(base)}`, fmt: fx, release: RELEASE })),
+        g: `<div hidden data-csv="${esc(JSON.stringify(pts.map((p) => [`12 months to ${p.m}`, 'Power price ÷ gas price', p.v, 'ratio'])))}"></div>`,
+        say: `For years, a unit of PJM power sold for about ${fx(base)} the price of the gas that fuels most plants. In the latest 12 months it sold for ${fx(lastP.v)}: power is pricier than its fuel alone explains, a sign of tight supply.`,
+        note: `On-peak hours at PJM’s main trading hub, against the national (Henry Hub) gas price. Leaving out winter months, when the regional gas price can run far above it, the multiple still went from ${fx(nwBase)} to ${fx(nwLast)}.`,
+        src: 'EIA Wholesale Electricity and Natural Gas Market Data (Intercontinental Exchange data, republished with permission), PJM West hub; EIA Henry Hub natural gas spot price.',
+        cap: `Average on-peak price at the PJM West hub: $${pre.length ? (pre.reduce((a, p) => a + p.pw, 0) / pre.length).toFixed(0) : ''}/MWh over 2017–2021 (12-month averages), $${lastP.pw.toFixed(0)}/MWh in the 12 months to ${ml(lastP.m)}. Gas (Henry Hub): $${(pre.reduce((a, p) => a + p.gs, 0) / pre.length).toFixed(2)} and $${lastP.gs.toFixed(2)}/MMBtu. A gas plant’s fuel cost rises and falls with the gas price, so for years power prices moved with gas; when power sells well above that multiple, supply is tight, transmission bottlenecks are biting, or both. PJM’s independent market monitor found the same direction for 2025: its real-time average price rose 50.4%, from $33.74 to $50.73/MWh, and 58.5% of that rise came from fuel costs, with much of the rest from transmission constraints (Monitoring Analytics, 2025 State of the Market Report). Most retail customers pay averaged rates and do not see these daily prices.` });
+    }
+  }
 
   // The short version: the answer first, in three parts, each jumping to its pictures
   const lastA = pjmr?.auctions?.[pjmr.auctions.length - 1];

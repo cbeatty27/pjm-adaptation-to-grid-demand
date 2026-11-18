@@ -182,6 +182,28 @@ export function bridge(w, items) {
   return { svg: s, h, top, bottom, aria: items.map((it) => `${it.label.join(' ')}: ${(it.v / 1000).toFixed(1)} GW`).join('; '), pts: [] };
 }
 
+// Picture 9: a monthly line with a dashed baseline and the period after the release shaded.
+// pts: [{ m: 'YYYY-MM', v, html }]; base: baseline value; baseLab: its label; fmt: value label; release: 'YYYY-MM'
+export function monthLine(w, { pts, base, baseLab, fmt, release }) {
+  const narrow = w < 560, L = 44, R = w - (narrow ? 44 : 60), top = 16, bottom = narrow ? 240 : 300, h = bottom + 34;
+  const vs = pts.map((p) => p.v), lo = 0, hi = Math.ceil((Math.max(...vs, base) * 1.1) / 5) * 5;
+  const X = (i) => L + ((R - L) * i) / (pts.length - 1), Y = (v) => bottom - ((bottom - top) * (v - lo)) / (hi - lo);
+  let s = '';
+  const k = pts.findIndex((p) => p.m >= release);
+  if (k > 0) s += `<rect x="${X(k).toFixed(1)}" y="${top}" width="${(R - X(k)).toFixed(1)}" height="${bottom - top}" fill="${C.hot}" opacity=".06"/>${T(X(k) + 8, top + 14, 'After ChatGPT', { a: 'start', w: 700, c: C.hot, halo: true })}`;
+  const step = hi / 5 >= 5 ? 5 * Math.ceil(hi / 25) : 5;
+  for (let v = 0; v <= hi; v += step) s += grid(L, R, Y(v), `${v}×`);
+  pts.forEach((p, i) => { if (p.m.endsWith('-01') && (!narrow || Number(p.m.slice(0, 4)) % 2 === 0)) s += T(X(i), bottom + 24, p.m.slice(0, 4)); });
+  s += `<line x1="${L}" x2="${R}" y1="${Y(base).toFixed(1)}" y2="${Y(base).toFixed(1)}" stroke="${C.mute}" stroke-width="1.5" stroke-dasharray="5 5"/>`;
+  s += T(R - 6, Y(base) + 20, baseLab, { a: 'end', fs: narrow ? 12 : 13, w: 600, halo: true });
+  const P = pts.map((p, i) => [X(i), Y(p.v)]);
+  s += `<path d="${path(P.slice(0, Math.max(1, k + 1)))}" fill="none" stroke="${C.grey}" stroke-width="3" stroke-linejoin="round"/>`;
+  if (k > 0) s += `<path d="${path(P.slice(k))}" fill="none" stroke="${C.hot}" stroke-width="3.5" stroke-linejoin="round"/>`;
+  const n = pts.length - 1;
+  s += `<circle cx="${P[n][0].toFixed(1)}" cy="${P[n][1].toFixed(1)}" r="5" fill="${C.hot}" stroke="#fff" stroke-width="2"/>${T(P[n][0] + 8, P[n][1] + 5, fmt(pts[n].v), { a: 'start', fs: narrow ? 15 : 17, w: 800, c: C.hot, halo: true })}`;
+  return { svg: s, h, top, bottom, aria: `Power price as a multiple of the gas price: about ${fmt(base)} before, ${fmt(pts[n].v)} in the latest 12 months`, pts: pts.map((p, i) => ({ x: X(i), html: p.html })) };
+}
+
 // Horizontal bridge: rows build up to a total, then the rows after it fill the total back down to zero.
 // rows: [{ label, v (MW), kind: 'add' | 'total' | 'fill', hl }]; hl marks the row the headline is about.
 export function hbridge(w, rows) {
