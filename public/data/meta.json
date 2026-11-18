@@ -1,5 +1,5 @@
 {
-  "retrieved_at_utc": "2026-11-18T01:48:25+00:00",
+  "retrieved_at_utc": "2026-11-18T01:53:03+00:00",
   "routes": {
     "demand": {
       "route": "electricity/rto/region-data",
@@ -950,7 +950,7 @@
     },
     "us": "sum of balancing authorities, hours with >=90% of usual reporters",
     "us_overlap_ratio_median": 1.0,
-    "written_at_utc": "2026-11-18T01:50:31+00:00",
+    "written_at_utc": "2026-11-18T01:54:14+00:00",
     "files_present": [
       "bulk930_demand_hourly.csv.gz",
       "bulk930_demand_us_hourly.csv.gz",
@@ -958,7 +958,7 @@
       "bulk930_fuel_us_hourly.csv.gz"
     ]
   },
-  "built_at_utc": "2026-11-18T01:50:43+00:00",
+  "built_at_utc": "2026-11-18T01:54:27+00:00",
   "window_start": "2022-11-30",
   "baseline_window": [
     "2021-11",
